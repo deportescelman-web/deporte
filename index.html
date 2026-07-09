@@ -189,10 +189,7 @@ function render(){
   else if(activeView==='nuevo') bodyHtml = viewNuevoDeportista();
   else if(activeView==='ficha') bodyHtml = viewFicha();
   else if(activeView==='evaluacion') bodyHtml = viewEvaluacion();
-  else if(activeView==='csai2') bodyHtml = viewInstrumento('csai2');
-  else if(activeView==='sas2') bodyHtml = viewInstrumento('sas2');
-  else if(activeView==='pss14') bodyHtml = viewInstrumento('pss14');
-  else if(activeView==='abq') bodyHtml = viewInstrumento('abq');
+  else if(INSTRUMENTS[activeView]) bodyHtml = viewInstrumento(activeView);
 
   root.innerHTML = `
   <div class="app">
