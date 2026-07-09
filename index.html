@@ -63,6 +63,34 @@
   .badge-estado.completa{background:var(--verde-bg);color:var(--verde);}
   .spinner{display:inline-block;width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;margin-right:6px;}
   @keyframes spin{to{transform:rotate(360deg);}}
+
+  /* ---------- Módulos psicológicos ---------- */
+  .module-card{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;}
+  .module-card .mname{font-weight:700;font-size:14.5px;}
+  .module-card .mdesc{color:var(--gray);font-size:12px;margin-top:2px;}
+  .status-pill{padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;}
+  .status-pill.pendiente{background:#F1F4F7;color:var(--gray);}
+  .status-pill.completo{background:var(--verde-bg);color:var(--verde);}
+  .qsection-title{margin:22px 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--primary);font-weight:700;border-bottom:2px solid var(--border);padding-bottom:6px;}
+  .qrow{display:grid;grid-template-columns:1fr auto;align-items:center;gap:14px;padding:9px 0;border-bottom:1px solid #F0F3F6;}
+  .qtext{font-size:13.8px;line-height:1.4;}
+  .qtext .qnum{color:var(--accent);font-family:var(--mono);margin-right:6px;}
+  .scale{display:flex;gap:4px;}
+  .scale label.opt{display:flex;flex-direction:column;align-items:center;font-size:9.5px;color:var(--gray);font-weight:400;margin:0;width:60px;text-align:center;cursor:pointer;}
+  .scale input{margin-bottom:3px;cursor:pointer;}
+  .score-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-top:16px;}
+  .score-card{border:1px solid var(--border);border-radius:8px;padding:14px 16px;}
+  .score-card .sc-label{font-size:11.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--gray);font-weight:700;}
+  .score-card .sc-value{font-family:var(--mono);font-size:22px;margin:4px 0;}
+  .badge{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:20px;font-size:11.5px;font-weight:700;}
+  .badge .ring{width:9px;height:9px;border-radius:50%;}
+  .badge.verde{background:var(--verde-bg);color:var(--verde);}
+  .badge.verde .ring{background:var(--verde);}
+  .badge.amarillo{background:var(--amarillo-bg);color:var(--amarillo);}
+  .badge.amarillo .ring{background:var(--amarillo);}
+  .badge.rojo{background:var(--rojo-bg);color:var(--rojo);}
+  .badge.rojo .ring{background:var(--rojo);}
+  .interpretation-box{background:#F7FAFB;border-left:4px solid var(--primary);border-radius:6px;padding:16px 18px;margin-top:14px;font-size:13.8px;line-height:1.7;}
 </style>
 </head>
 <body>
@@ -89,6 +117,9 @@ let athletes = [];
 let currentAthleteId = null;
 let currentAthlete = null;
 let evaluations = [];
+let currentEvaluationId = null;
+let currentEvaluation = null;
+let moduleResults = {}; // { module_key: {raw_data, scores, completed} }
 
 function esc(s){ return (s===null||s===undefined?'':s.toString()).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
@@ -157,6 +188,11 @@ function render(){
   if(activeView==='lista') bodyHtml = viewLista();
   else if(activeView==='nuevo') bodyHtml = viewNuevoDeportista();
   else if(activeView==='ficha') bodyHtml = viewFicha();
+  else if(activeView==='evaluacion') bodyHtml = viewEvaluacion();
+  else if(activeView==='csai2') bodyHtml = viewInstrumento('csai2');
+  else if(activeView==='sas2') bodyHtml = viewInstrumento('sas2');
+  else if(activeView==='pss14') bodyHtml = viewInstrumento('pss14');
+  else if(activeView==='abq') bodyHtml = viewInstrumento('abq');
 
   root.innerHTML = `
   <div class="app">
@@ -303,7 +339,7 @@ function viewFicha(){
       <div class="eval-row">
         <div>${esc(e.fecha_evaluacion)} — ${esc(e.contexto||'Sin contexto')} <span class="badge-estado ${e.estado}">${e.estado==='completa'?'Completa':'En progreso'}</span></div>
         <div class="btn-row" style="margin:0;">
-          <button class="btn-ghost" onclick="alert('Los módulos de evaluación se habilitan en la próxima fase.')">Abrir</button>
+          <button class="btn-ghost" onclick="window.abrirEvaluacion('${e.id}')">Abrir</button>
           <button class="btn-danger" onclick="window.eliminarEvaluacion('${e.id}')">Eliminar</button>
         </div>
       </div>`).join('');
@@ -361,6 +397,311 @@ window.eliminarEvaluacion = async function(id){
   await loadEvaluations(currentAthleteId);
   render();
 };
+
+/* ============================================================
+   MÓDULOS PSICOLÓGICOS — Tanda 1: Ansiedad y Estrés
+   ============================================================ */
+const SCALE_1_4_INTENSIDAD = ["Nada","Un poco","Moderadamente","Mucho"];
+const SCALE_1_4_FRECUENCIA = ["Nada","Un poco","Bastante","Mucho"];
+const SCALE_0_4_FRECUENCIA = ["Nunca","Casi nunca","De vez en cuando","A menudo","Muy a menudo"];
+const SCALE_1_5_FRECUENCIA = ["Casi nunca","Rara vez","A veces","Frecuentemente","Casi siempre"];
+
+const CSAI2_ITEMS = [
+  {t:"Me preocupa esta competencia", sub:'cognitiva'},
+  {t:"Me preocupa no rendir tan bien en esta competencia como podría", sub:'cognitiva'},
+  {t:"Me preocupa tener un mal rendimiento", sub:'cognitiva'},
+  {t:"Me preocupa no alcanzar mi objetivo", sub:'cognitiva'},
+  {t:"Me preocupa que otros se decepcionen con mi rendimiento", sub:'cognitiva'},
+  {t:"Siento el cuerpo tenso", sub:'somatica'},
+  {t:"Me siento nervioso/a", sub:'somatica'},
+  {t:"Siento el cuerpo rígido", sub:'somatica'},
+  {t:"Siento que el estómago se me encoge", sub:'somatica'},
+  {t:"Tengo las manos húmedas/sudorosas", sub:'somatica'},
+  {t:"Me siento inquieto/a, con temblor interno", sub:'somatica'},
+  {t:"Siento el estómago revuelto", sub:'somatica'},
+  {t:"Me siento seguro/a de mí mismo/a", sub:'confianza'},
+  {t:"Me siento confiado/a porque me imagino alcanzando mi objetivo", sub:'confianza'},
+  {t:"Me siento confiado/a porque me imagino rindiendo bien", sub:'confianza'},
+  {t:"Estoy seguro/a de que voy a rendir bien", sub:'confianza'},
+  {t:"Me siento confiado/a porque me siento mentalmente fuerte", sub:'confianza'},
+];
+
+const SAS2_ITEMS = [
+  {t:"Siento el cuerpo tenso", sub:'somatica'},
+  {t:"Siento el estómago tenso", sub:'somatica'},
+  {t:"Siento que me tiemblan los músculos", sub:'somatica'},
+  {t:"Siento el cuerpo rígido", sub:'somatica'},
+  {t:"Siento el estómago revuelto", sub:'somatica'},
+  {t:"Me preocupa no rendir bien", sub:'preocupacion'},
+  {t:"Me preocupa decepcionar a otros", sub:'preocupacion'},
+  {t:"Me preocupa jugar mal", sub:'preocupacion'},
+  {t:"Me preocupa no alcanzar mis metas", sub:'preocupacion'},
+  {t:"Me preocupa rendir por debajo de lo esperado", sub:'preocupacion'},
+  {t:"Pierdo el foco durante la competencia", sub:'concentracion'},
+  {t:"Me cuesta concentrarme", sub:'concentracion'},
+  {t:"Mi mente se distrae durante la competencia", sub:'concentracion'},
+  {t:"Me cuesta enfocarme en lo que tengo que hacer", sub:'concentracion'},
+  {t:"Me distraigo con facilidad", sub:'concentracion'},
+];
+
+const PSS14_ITEMS = [
+  {t:"¿Con qué frecuencia ha estado afectado/a por algo que ocurrió inesperadamente?", rev:false},
+  {t:"¿Con qué frecuencia se ha sentido incapaz de controlar las cosas importantes de su vida?", rev:false},
+  {t:"¿Con qué frecuencia se ha sentido nervioso/a o estresado/a?", rev:false},
+  {t:"¿Con qué frecuencia ha manejado con éxito los pequeños problemas irritantes de la vida?", rev:true},
+  {t:"¿Con qué frecuencia ha sentido que ha afrontado efectivamente los cambios importantes en su vida?", rev:true},
+  {t:"¿Con qué frecuencia ha estado seguro/a de su capacidad para manejar sus problemas personales?", rev:true},
+  {t:"¿Con qué frecuencia ha sentido que las cosas le van bien?", rev:true},
+  {t:"¿Con qué frecuencia ha sentido que no podía afrontar todo lo que tenía que hacer?", rev:false},
+  {t:"¿Con qué frecuencia ha podido controlar las dificultades de su vida?", rev:true},
+  {t:"¿Con qué frecuencia ha sentido que tenía todo bajo control?", rev:true},
+  {t:"¿Con qué frecuencia ha estado enfadado/a porque las cosas que le ocurrieron estaban fuera de su control?", rev:false},
+  {t:"¿Con qué frecuencia ha pensado en las cosas que le quedan por hacer?", rev:false},
+  {t:"¿Con qué frecuencia ha podido controlar la forma en que pasa el tiempo?", rev:true},
+  {t:"¿Con qué frecuencia ha sentido que las dificultades se acumulan tanto que no puede superarlas?", rev:false},
+];
+
+const ABQ_ITEMS = [
+  {t:"Me siento agotado/a por las exigencias mentales y físicas de mi deporte", sub:'agotamiento'},
+  {t:"Estoy tan cansado/a de mi deporte que me cuesta encontrar energía para entrenar", sub:'agotamiento'},
+  {t:"Estoy exhausto/a por el entrenamiento y la competencia", sub:'agotamiento'},
+  {t:"Siento el cuerpo cansado por practicar mi deporte", sub:'agotamiento'},
+  {t:"Estoy agobiado/a por las exigencias de la competencia y el entrenamiento", sub:'agotamiento'},
+  {t:"Siento que no estoy logrando mucho en mi deporte", sub:'realizacion'},
+  {t:"No estoy rindiendo a la altura de mi capacidad", sub:'realizacion'},
+  {t:"Siento que mi esfuerzo en el deporte no vale la pena", sub:'realizacion'},
+  {t:"Siento que no estoy alcanzando mis metas deportivas", sub:'realizacion'},
+  {t:"Siento que soy menos eficaz que otros/as en mi deporte", sub:'realizacion'},
+  {t:"Ya no me importa tanto rendir bien en mi deporte como antes", sub:'devaluacion'},
+  {t:"Tengo una actitud negativa hacia mi deporte", sub:'devaluacion'},
+  {t:"Siento menos preocupación por rendir bien que antes", sub:'devaluacion'},
+  {t:"Estoy perdiendo el interés en mi deporte", sub:'devaluacion'},
+  {t:"No me siento tan entusiasmado/a con mi deporte como antes", sub:'devaluacion'},
+];
+
+const INSTRUMENTS = {
+  csai2: {label:"CSAI-2R — Ansiedad competitiva", items:CSAI2_ITEMS, scale:SCALE_1_4_INTENSIDAD, base:1,
+    desc:"Ansiedad cognitiva, somática y autoconfianza. Ideal aplicarlo lo más cerca posible del momento competitivo (minutos u horas antes)."},
+  sas2: {label:"SAS-2 — Ansiedad deportiva", items:SAS2_ITEMS, scale:SCALE_1_4_FRECUENCIA, base:1,
+    desc:"Ansiedad somática, preocupación (worry) y disrupción de la concentración. Puede aplicarse de forma más general, no solo pre-competitiva."},
+  pss14: {label:"PSS-14 — Estrés percibido", items:PSS14_ITEMS, scale:SCALE_0_4_FRECUENCIA, base:0,
+    desc:"Estrés general percibido en el último mes (Cohen, Kamarck & Mermelstein). No es específico del deporte, da contexto de vida global."},
+  abq: {label:"ABQ — Burnout deportivo", items:ABQ_ITEMS, scale:SCALE_1_5_FRECUENCIA, base:1,
+    desc:"Agotamiento físico/emocional, reducida realización deportiva y devaluación del deporte (Raedeke & Smith)."},
+};
+
+async function loadModuleResults(evaluationId){
+  const { data, error } = await supabase.from('module_results').select('*').eq('evaluation_id', evaluationId);
+  moduleResults = {};
+  if(!error && data){ data.forEach(r=>{ moduleResults[r.module_key] = r; }); }
+}
+
+window.abrirEvaluacion = async function(id){
+  currentEvaluationId = id;
+  currentEvaluation = evaluations.find(e=>e.id===id) || null;
+  activeView = 'evaluacion';
+  render();
+  await loadModuleResults(id);
+  render();
+};
+
+function viewEvaluacion(){
+  if(!currentEvaluation) return `<div class="panel"><p>Cargando evaluación…</p></div>`;
+  const e = currentEvaluation;
+  const cards = Object.keys(INSTRUMENTS).map(key=>{
+    const inst = INSTRUMENTS[key];
+    const done = moduleResults[key] && moduleResults[key].completed;
+    return `<div class="module-card">
+      <div><div class="mname">${esc(inst.label)}</div><div class="mdesc">${esc(inst.desc)}</div></div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span class="status-pill ${done?'completo':'pendiente'}">${done?'Completo':'Pendiente'}</span>
+        <button class="btn-primary" onclick="window.gotoInstrumento('${key}')">${done?'Revisar':'Aplicar'}</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  const allDone = Object.keys(INSTRUMENTS).every(k=> moduleResults[k] && moduleResults[k].completed);
+  const interp = allDone ? buildInterpretacionAnsiedadEstres() : null;
+
+  return `<div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">${esc(currentAthlete.nombre)}</div><h1>Evaluación del ${esc(e.fecha_evaluacion)}</h1></div>
+      <button class="btn-ghost" onclick="window.abrirFicha('${currentAthleteId}')">← Volver a la ficha</button>
+    </div>
+    <p class="hint">Contexto: ${esc(e.contexto||'—')} · Evaluador: ${esc(e.evaluador||'—')}</p>
+    ${cards}
+  </div>
+  ${allDone ? `<div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Integración</div><h1>Interpretación — Ansiedad y Estrés</h1></div></div>
+    <div class="interpretation-box">${interp}</div>
+  </div>` : `<p class="hint" style="padding:0 4px;">La interpretación integrada aparece automáticamente cuando completes los 4 instrumentos.</p>`}
+  `;
+}
+window.gotoInstrumento = function(key){ activeView = key; render(); };
+
+function viewInstrumento(key){
+  const inst = INSTRUMENTS[key];
+  const existing = moduleResults[key];
+  const raw = existing? existing.raw_data : null;
+  const itemsHtml = inst.items.map((it,i)=>{
+    const val = raw ? raw[i] : undefined;
+    let opts = inst.scale.map((lab,li)=>{
+      const scoreVal = inst.base + li;
+      const checked = (val!==undefined && Number(val)===scoreVal) ? 'checked':'';
+      return `<label class="opt"><input type="radio" name="q_${i}" value="${scoreVal}" ${checked}>${lab}</label>`;
+    }).join('');
+    return `<div class="qrow"><div class="qtext"><span class="qnum">${i+1}.</span>${esc(it.t)}</div><div class="scale">${opts}</div></div>`;
+  }).join('');
+
+  return `<div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">${esc(currentAthlete.nombre)} · ${esc(currentEvaluation.fecha_evaluacion)}</div><h1>${esc(inst.label)}</h1></div>
+      <button class="btn-ghost" onclick="window.abrirEvaluacionDesdeInstrumento()">← Volver</button>
+    </div>
+    <p class="hint">${esc(inst.desc)}</p>
+    <div id="instMsg"></div>
+    ${itemsHtml}
+    <div class="btn-row"><button class="btn-primary" onclick="window.guardarInstrumento('${key}')">Guardar y calcular</button></div>
+    <div id="instResults">${existing && existing.completed ? renderInstrumentoResultado(key, existing.scores) : ''}</div>
+  </div>`;
+}
+window.abrirEvaluacionDesdeInstrumento = function(){ activeView='evaluacion'; render(); };
+
+function badgeHtml(level){
+  const map = {verde:['Bajo','verde'], amarillo:['Moderado','amarillo'], rojo:['Alto','rojo']};
+  const [lab,cls] = map[level];
+  return `<span class="badge ${cls}"><span class="ring"></span>${lab}</span>`;
+}
+function scoreCardHtml(label, value, level){
+  return `<div class="score-card"><div class="sc-label">${label}</div><div class="sc-value">${value}</div>${badgeHtml(level)}</div>`;
+}
+
+function scoreCSAI2(answers){
+  const bySub = {cognitiva:[], somatica:[], confianza:[]};
+  CSAI2_ITEMS.forEach((it,i)=> bySub[it.sub].push(answers[i]));
+  const avg = arr => arr.reduce((a,b)=>a+b,0)/arr.length;
+  return { cognitiva: avg(bySub.cognitiva), somatica: avg(bySub.somatica), confianza: avg(bySub.confianza) };
+}
+function scoreSAS2(answers){
+  const bySub = {somatica:[], preocupacion:[], concentracion:[]};
+  SAS2_ITEMS.forEach((it,i)=> bySub[it.sub].push(answers[i]));
+  const avg = arr => arr.reduce((a,b)=>a+b,0)/arr.length;
+  return { somatica: avg(bySub.somatica), preocupacion: avg(bySub.preocupacion), concentracion: avg(bySub.concentracion) };
+}
+function scorePSS14(answers){
+  let total = 0;
+  PSS14_ITEMS.forEach((it,i)=>{ total += it.rev ? (4-answers[i]) : answers[i]; });
+  return { total };
+}
+function scoreABQ(answers){
+  const bySub = {agotamiento:[], realizacion:[], devaluacion:[]};
+  ABQ_ITEMS.forEach((it,i)=> bySub[it.sub].push(answers[i]));
+  const avg = arr => arr.reduce((a,b)=>a+b,0)/arr.length;
+  const subs = { agotamiento: avg(bySub.agotamiento), realizacion: avg(bySub.realizacion), devaluacion: avg(bySub.devaluacion) };
+  subs.global = (subs.agotamiento + subs.realizacion + subs.devaluacion) / 3;
+  return subs;
+}
+
+window.guardarInstrumento = async function(key){
+  const inst = INSTRUMENTS[key];
+  const answers = inst.items.map((it,i)=>{
+    const r = document.querySelector(`input[name="q_${i}"]:checked`);
+    return r? Number(r.value): null;
+  });
+  if(answers.includes(null)){
+    document.getElementById('instMsg').innerHTML = `<div class="error-box">Respondé todos los ítems antes de guardar.</div>`;
+    return;
+  }
+  let scores;
+  if(key==='csai2') scores = scoreCSAI2(answers);
+  else if(key==='sas2') scores = scoreSAS2(answers);
+  else if(key==='pss14') scores = scorePSS14(answers);
+  else if(key==='abq') scores = scoreABQ(answers);
+
+  const payload = {
+    evaluation_id: currentEvaluationId,
+    user_id: session.user.id,
+    module_key: key,
+    raw_data: answers,
+    scores: scores,
+    completed: true,
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await supabase.from('module_results').upsert(payload, { onConflict: 'evaluation_id,module_key' });
+  if(error){
+    document.getElementById('instMsg').innerHTML = `<div class="error-box">Error al guardar: ${esc(error.message)}</div>`;
+    return;
+  }
+  await loadModuleResults(currentEvaluationId);
+  document.getElementById('instResults').innerHTML = renderInstrumentoResultado(key, scores);
+  document.getElementById('instMsg').innerHTML = `<div class="ok-box">Guardado correctamente.</div>`;
+};
+
+function levelAvg4(avg){ if(avg>=3) return 'rojo'; if(avg>=2) return 'amarillo'; return 'verde'; }
+function levelConfianza(avg){ if(avg>=3) return 'verde'; if(avg>=2) return 'amarillo'; return 'rojo'; }
+function levelPSS(total){ if(total>=27) return 'rojo'; if(total>=14) return 'amarillo'; return 'verde'; }
+function levelABQ(avg){ if(avg>=3.5) return 'rojo'; if(avg>=2.5) return 'amarillo'; return 'verde'; }
+
+function renderInstrumentoResultado(key, s){
+  if(key==='csai2'){
+    return `<div class="score-grid">
+      ${scoreCardHtml('Ansiedad cognitiva', s.cognitiva.toFixed(2)+' / 4', levelAvg4(s.cognitiva))}
+      ${scoreCardHtml('Ansiedad somática', s.somatica.toFixed(2)+' / 4', levelAvg4(s.somatica))}
+      ${scoreCardHtml('Autoconfianza', s.confianza.toFixed(2)+' / 4', levelConfianza(s.confianza))}
+    </div><p class="hint">Promedio por ítem (1-4). En autoconfianza, alto = mejor (verde).</p>`;
+  }
+  if(key==='sas2'){
+    return `<div class="score-grid">
+      ${scoreCardHtml('Ansiedad somática', s.somatica.toFixed(2)+' / 4', levelAvg4(s.somatica))}
+      ${scoreCardHtml('Preocupación (worry)', s.preocupacion.toFixed(2)+' / 4', levelAvg4(s.preocupacion))}
+      ${scoreCardHtml('Disrupción de concentración', s.concentracion.toFixed(2)+' / 4', levelAvg4(s.concentracion))}
+    </div><p class="hint">Promedio por ítem (1-4).</p>`;
+  }
+  if(key==='pss14'){
+    return `<div class="score-grid">${scoreCardHtml('Estrés percibido total', s.total+' / 56', levelPSS(s.total))}</div>
+    <p class="hint">0-13 bajo · 14-26 moderado · 27-56 alto (banda orientativa de uso frecuente en la literatura, no un punto de corte diagnóstico oficial).</p>`;
+  }
+  if(key==='abq'){
+    return `<div class="score-grid">
+      ${scoreCardHtml('Agotamiento', s.agotamiento.toFixed(2)+' / 5', levelABQ(s.agotamiento))}
+      ${scoreCardHtml('Reducida realización', s.realizacion.toFixed(2)+' / 5', levelABQ(s.realizacion))}
+      ${scoreCardHtml('Devaluación del deporte', s.devaluacion.toFixed(2)+' / 5', levelABQ(s.devaluacion))}
+      ${scoreCardHtml('Burnout global', s.global.toFixed(2)+' / 5', levelABQ(s.global))}
+    </div><p class="hint">Promedio por ítem (1-5). ≥3.5 alto · 2.5-3.49 moderado · &lt;2.5 bajo.</p>`;
+  }
+}
+
+function buildInterpretacionAnsiedadEstres(){
+  const csai = moduleResults.csai2.scores;
+  const sas = moduleResults.sas2.scores;
+  const pss = moduleResults.pss14.scores;
+  const abq = moduleResults.abq.scores;
+  const lines = [];
+
+  if(csai.cognitiva>=3) lines.push('El CSAI-2R muestra ansiedad cognitiva elevada de cara a la competencia (preocupación excesiva por el resultado y el juicio de terceros).');
+  if(csai.somatica>=3) lines.push('El CSAI-2R muestra activación somática elevada (tensión física, síntomas neurovegetativos) previa a competir.');
+  if(csai.confianza<2) lines.push('El CSAI-2R muestra baja autoconfianza competitiva, lo cual suele potenciar el efecto negativo de la ansiedad sobre el rendimiento.');
+
+  if(sas.preocupacion>=3 && csai.cognitiva>=3) lines.push('El SAS-2 confirma el patrón de preocupación (worry) detectado en el CSAI-2R, lo que sugiere un componente cognitivo de ansiedad consistente entre instrumentos.');
+  if(sas.concentracion>=3) lines.push('El SAS-2 señala disrupción relevante de la concentración durante la competencia, un dato clave para trabajar rutinas atencionales.');
+
+  if(pss.total>=27) lines.push('El PSS-14 indica un nivel de estrés percibido general alto, lo que sugiere que la ansiedad competitiva podría estar amplificada por estrés de fondo no directamente ligado al deporte (académico, familiar, económico).');
+  else if(pss.total>=14) lines.push('El PSS-14 indica un nivel de estrés percibido general moderado.');
+
+  if(abq.global>=3.5) lines.push('El ABQ indica un cuadro de burnout deportivo relevante (agotamiento, desmotivación y/o devaluación del deporte), lo que amerita una intervención prioritaria y posible ajuste de carga de entrenamiento en conjunto con el cuerpo técnico.');
+  else if(abq.global>=2.5) lines.push('El ABQ indica señales moderadas de desgaste deportivo, a monitorear en próximas evaluaciones.');
+  if(abq.agotamiento>=3.5 && pss.total>=27) lines.push('El agotamiento reportado en el ABQ es consistente con el alto estrés percibido general (PSS-14), lo que reduce la probabilidad de que se trate solo de fatiga física y sugiere un componente de sobrecarga psicológica.');
+
+  let sintesis;
+  const riesgos = [csai.cognitiva>=3||csai.somatica>=3, sas.preocupacion>=3||sas.concentracion>=3, pss.total>=27, abq.global>=3.5].filter(Boolean).length;
+  if(riesgos===0){
+    sintesis = 'El perfil integrado no muestra, por ahora, indicadores clínicamente relevantes de ansiedad competitiva, estrés general o burnout. Se recomienda continuar con seguimiento periódico durante la temporada.';
+  } else if(riesgos<=2){
+    sintesis = 'El perfil integrado muestra algunos indicadores a monitorear. Se sugiere trabajar estrategias de regulación (respiración, activación óptima, rutinas pre-competitivas) y reevaluar en la siguiente ventana de seguimiento.';
+  } else {
+    sintesis = 'El perfil integrado muestra múltiples indicadores concurrentes de ansiedad, estrés y/o desgaste deportivo. Se recomienda una intervención psicológica activa y coordinación con el cuerpo técnico sobre carga de entrenamiento y competencia, con reevaluación en un plazo breve (2-4 semanas).';
+  }
+
+  return lines.map(l=>`<p>${l}</p>`).join('') + `<p><strong>${sintesis}</strong></p>`;
+}
 
 /* ============================================================
    INIT
