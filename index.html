@@ -479,7 +479,83 @@ const ABQ_ITEMS = [
   {t:"No me siento tan entusiasmado/a con mi deporte como antes", sub:'devaluacion'},
 ];
 
+const SCALE_1_5_ACUERDO = ["Totalmente en desacuerdo","En desacuerdo","Neutral","De acuerdo","Totalmente de acuerdo"];
+const SCALE_1_5_SEGURIDAD = ["Nada seguro/a","Poco seguro/a","Moderadamente seguro/a","Bastante seguro/a","Totalmente seguro/a"];
+const SCALE_1_7_VERDAD = ["1 · Nada verdadero","2","3","4 · Moderadamente verdadero","5","6","7 · Totalmente verdadero"];
+
+// SMS-28 (Escala de Motivación Deportiva, Pelletier et al.) — estem: "Practico mi deporte porque..."
+const SMS28_ITEMS = [
+  {t:"...por el placer de descubrir nuevas técnicas de entrenamiento", sub:'im_conocer'},
+  {t:"...por el placer que siento al aprender más sobre mi deporte", sub:'im_conocer'},
+  {t:"...me resulta interesante conocer cómo mejora mi rendimiento", sub:'im_conocer'},
+  {t:"...por la satisfacción que siento al aprender técnicas que no dominaba", sub:'im_conocer'},
+  {t:"...por la satisfacción que siento al mejorar algunos de mis puntos débiles", sub:'im_logro'},
+  {t:"...por el placer que siento al dominar aspectos difíciles del entrenamiento", sub:'im_logro'},
+  {t:"...por la satisfacción que experimento al perfeccionar mis habilidades", sub:'im_logro'},
+  {t:"...me da mucha satisfacción mejorar mi rendimiento", sub:'im_logro'},
+  {t:"...por las sensaciones agradables que experimento mientras practico", sub:'im_estimulo'},
+  {t:"...me gusta el sentimiento de estar totalmente inmerso/a en la actividad", sub:'im_estimulo'},
+  {t:"...por la emoción que siento cuando estoy realmente compenetrado/a", sub:'im_estimulo'},
+  {t:"...por el placer de experimentar sensaciones únicas de mi deporte", sub:'im_estimulo'},
+  {t:"...es una buena manera de aprender cosas útiles para otras áreas de mi vida", sub:'em_identificada'},
+  {t:"...es una de las mejores formas que elegí para desarrollarme como persona", sub:'em_identificada'},
+  {t:"...es una buena forma de aprender cosas que me sirven en otras áreas", sub:'em_identificada'},
+  {t:"...es una de las mejores formas de mantener buenas relaciones con mis amigos/as", sub:'em_identificada'},
+  {t:"...me sentiría mal si no dedicara tiempo a practicarlo", sub:'em_introyectada'},
+  {t:"...tengo que entrenar para sentirme bien conmigo mismo/a", sub:'em_introyectada'},
+  {t:"...es absolutamente necesario hacerlo si quiero estar en forma", sub:'em_introyectada'},
+  {t:"...siento que debo hacerlo, aunque no siempre tenga ganas", sub:'em_introyectada'},
+  {t:"...para mostrarles a otros lo bueno/a que soy en mi deporte", sub:'em_externa'},
+  {t:"...las personas que me rodean piensan que es importante que lo practique", sub:'em_externa'},
+  {t:"...me permite estar bien visto/a por la gente que conozco", sub:'em_externa'},
+  {t:"...es lo que se espera de mí (familia, entrenador/a)", sub:'em_externa'},
+  {t:"Solía tener buenas razones para practicarlo, pero ahora me pregunto si debo continuar", sub:'amotivacion'},
+  {t:"No lo sé; tengo la impresión de que no soy capaz de tener éxito en este deporte", sub:'amotivacion'},
+  {t:"No lo sé claramente; ya no siento que este deporte sea para mí", sub:'amotivacion'},
+  {t:"Lo practico, pero no estoy seguro/a de que valga la pena continuar", sub:'amotivacion'},
+];
+
+// TEOSQ (Duda & Nicholls) — estem: "Me siento más exitoso/a en el deporte cuando..."
+const TEOSQ_ITEMS = [
+  {t:"...aprendo algo nuevo que me motiva a seguir practicando", sub:'tarea'},
+  {t:"...aprendo una nueva habilidad esforzándome mucho", sub:'tarea'},
+  {t:"...algo que aprendo me hace querer seguir practicando", sub:'tarea'},
+  {t:"...trabajo realmente duro", sub:'tarea'},
+  {t:"...un movimiento nuevo que practico me sale bien", sub:'tarea'},
+  {t:"...hago mi mejor esfuerzo", sub:'tarea'},
+  {t:"...alcanzo un objetivo personal de mejora", sub:'tarea'},
+  {t:"...soy el/la único/a que puede hacer una jugada o movimiento", sub:'ego'},
+  {t:"...puedo hacerlo mejor que mis compañeros/as", sub:'ego'},
+  {t:"...los demás no pueden hacerlo tan bien como yo", sub:'ego'},
+  {t:"...gano fácilmente", sub:'ego'},
+  {t:"...anoto o consigo más puntos que los demás", sub:'ego'},
+  {t:"...los otros cometen más errores que yo", sub:'ego'},
+];
+
+// Autoeficacia deportiva situacional (escala propia)
+const AUTOEFI_ITEMS = [
+  {t:"Me siento capaz de rendir bien aunque esté nervioso/a antes de competir", sub:'previa'},
+  {t:"Confío en mi preparación previa a la competencia", sub:'previa'},
+  {t:"Puedo controlar mis pensamientos negativos antes de empezar", sub:'previa'},
+  {t:"Puedo mantener mi nivel de rendimiento cuando el marcador está apretado", sub:'presion'},
+  {t:"Me siento capaz de tomar buenas decisiones bajo presión de tiempo", sub:'presion'},
+  {t:"Puedo mantener la calma en los momentos más difíciles de la competencia", sub:'presion'},
+  {t:"Puedo recuperarme rápidamente después de cometer un error", sub:'error'},
+  {t:"Confío en que un error no arruinará el resto de mi actuación", sub:'error'},
+  {t:"Puedo mantener la concentración después de fallar", sub:'error'},
+  {t:"Me siento capaz de mantener mi rendimiento hasta el final", sub:'cierre'},
+  {t:"Confío en mi resistencia física y mental en los momentos finales", sub:'cierre'},
+  {t:"Puedo mantener la motivación aunque esté cansado/a", sub:'cierre'},
+];
+
+
 const INSTRUMENTS = {
+  sms28: {label:"SMS-28 — Motivación deportiva", items:SMS28_ITEMS, scale:SCALE_1_7_VERDAD, base:1,
+    desc:"Motivación intrínseca (conocer, logro, estimulación), extrínseca (identificada, introyectada, externa) y amotivación. Estem: \"Practico mi deporte porque...\""},
+  teosq: {label:"TEOSQ — Orientación a meta", items:TEOSQ_ITEMS, scale:SCALE_1_5_ACUERDO, base:1,
+    desc:"Orientación a la tarea (compite contra su propia mejora) vs. orientación al ego (compite por el resultado/comparación social). Estem: \"Me siento más exitoso/a cuando...\""},
+  autoeficacia: {label:"Autoeficacia deportiva situacional", items:AUTOEFI_ITEMS, scale:SCALE_1_5_SEGURIDAD, base:1,
+    desc:"Confianza específica en 4 momentos críticos: antes de competir, bajo presión, tras un error, y en el cierre de la competencia."},
   csai2: {label:"CSAI-2R — Ansiedad competitiva", items:CSAI2_ITEMS, scale:SCALE_1_4_INTENSIDAD, base:1,
     desc:"Ansiedad cognitiva, somática y autoconfianza. Ideal aplicarlo lo más cerca posible del momento competitivo (minutos u horas antes)."},
   sas2: {label:"SAS-2 — Ansiedad deportiva", items:SAS2_ITEMS, scale:SCALE_1_4_FRECUENCIA, base:1,
@@ -505,10 +581,11 @@ window.abrirEvaluacion = async function(id){
   render();
 };
 
-function viewEvaluacion(){
-  if(!currentEvaluation) return `<div class="panel"><p>Cargando evaluación…</p></div>`;
-  const e = currentEvaluation;
-  const cards = Object.keys(INSTRUMENTS).map(key=>{
+const GRUPO_ANSIEDAD = ['csai2','sas2','pss14','abq'];
+const GRUPO_MOTIVACION = ['sms28','teosq','autoeficacia'];
+
+function moduleCardsHtml(keys){
+  return keys.map(key=>{
     const inst = INSTRUMENTS[key];
     const done = moduleResults[key] && moduleResults[key].completed;
     return `<div class="module-card">
@@ -519,21 +596,33 @@ function viewEvaluacion(){
       </div>
     </div>`;
   }).join('');
+}
 
-  const allDone = Object.keys(INSTRUMENTS).every(k=> moduleResults[k] && moduleResults[k].completed);
-  const interp = allDone ? buildInterpretacionAnsiedadEstres() : null;
+function viewEvaluacion(){
+  if(!currentEvaluation) return `<div class="panel"><p>Cargando evaluación…</p></div>`;
+  const e = currentEvaluation;
+
+  const ansiedadDone = GRUPO_ANSIEDAD.every(k=> moduleResults[k] && moduleResults[k].completed);
+  const motivacionDone = GRUPO_MOTIVACION.every(k=> moduleResults[k] && moduleResults[k].completed);
 
   return `<div class="panel">
     <div class="panel-head"><div><div class="eyebrow">${esc(currentAthlete.nombre)}</div><h1>Evaluación del ${esc(e.fecha_evaluacion)}</h1></div>
       <button class="btn-ghost" onclick="window.abrirFicha('${currentAthleteId}')">← Volver a la ficha</button>
     </div>
     <p class="hint">Contexto: ${esc(e.contexto||'—')} · Evaluador: ${esc(e.evaluador||'—')}</p>
-    ${cards}
   </div>
-  ${allDone ? `<div class="panel">
-    <div class="panel-head"><div><div class="eyebrow">Integración</div><h1>Interpretación — Ansiedad y Estrés</h1></div></div>
-    <div class="interpretation-box">${interp}</div>
-  </div>` : `<p class="hint" style="padding:0 4px;">La interpretación integrada aparece automáticamente cuando completes los 4 instrumentos.</p>`}
+
+  <div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Tanda 1</div><h1>Ansiedad y Estrés</h1></div></div>
+    ${moduleCardsHtml(GRUPO_ANSIEDAD)}
+    ${ansiedadDone ? `<div class="interpretation-box">${buildInterpretacionAnsiedadEstres()}</div>` : `<p class="hint">La interpretación integrada aparece al completar los 4 instrumentos.</p>`}
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Tanda 2</div><h1>Motivación</h1></div></div>
+    ${moduleCardsHtml(GRUPO_MOTIVACION)}
+    ${motivacionDone ? `<div class="interpretation-box">${buildInterpretacionMotivacion()}</div>` : `<p class="hint">La interpretación integrada aparece al completar los 3 instrumentos.</p>`}
+  </div>
   `;
 }
 window.gotoInstrumento = function(key){ activeView = key; render(); };
@@ -599,6 +688,35 @@ function scoreABQ(answers){
   subs.global = (subs.agotamiento + subs.realizacion + subs.devaluacion) / 3;
   return subs;
 }
+function scoreSMS28(answers){
+  const bySub = {im_conocer:[], im_logro:[], im_estimulo:[], em_identificada:[], em_introyectada:[], em_externa:[], amotivacion:[]};
+  SMS28_ITEMS.forEach((it,i)=> bySub[it.sub].push(answers[i]));
+  const avg = arr => arr.reduce((a,b)=>a+b,0)/arr.length;
+  const s = {
+    im_conocer: avg(bySub.im_conocer), im_logro: avg(bySub.im_logro), im_estimulo: avg(bySub.im_estimulo),
+    em_identificada: avg(bySub.em_identificada), em_introyectada: avg(bySub.em_introyectada), em_externa: avg(bySub.em_externa),
+    amotivacion: avg(bySub.amotivacion),
+  };
+  const imGlobal = (s.im_conocer + s.im_logro + s.im_estimulo) / 3;
+  // Índice de Autodeterminación (Vallerand): +2·IM +1·EM_identificada -1·EM_introyectada -2·EM_externa -2·Amotivación
+  s.imGlobal = imGlobal;
+  s.indiceAutodeterminacion = (2*imGlobal) + (1*s.em_identificada) - (1*s.em_introyectada) - (2*s.em_externa) - (2*s.amotivacion);
+  return s;
+}
+function scoreTEOSQ(answers){
+  const bySub = {tarea:[], ego:[]};
+  TEOSQ_ITEMS.forEach((it,i)=> bySub[it.sub].push(answers[i]));
+  const avg = arr => arr.reduce((a,b)=>a+b,0)/arr.length;
+  return { tarea: avg(bySub.tarea), ego: avg(bySub.ego) };
+}
+function scoreAutoeficacia(answers){
+  const bySub = {previa:[], presion:[], error:[], cierre:[]};
+  AUTOEFI_ITEMS.forEach((it,i)=> bySub[it.sub].push(answers[i]));
+  const avg = arr => arr.reduce((a,b)=>a+b,0)/arr.length;
+  const s = { previa: avg(bySub.previa), presion: avg(bySub.presion), error: avg(bySub.error), cierre: avg(bySub.cierre) };
+  s.global = (s.previa + s.presion + s.error + s.cierre) / 4;
+  return s;
+}
 
 window.guardarInstrumento = async function(key){
   const inst = INSTRUMENTS[key];
@@ -615,6 +733,9 @@ window.guardarInstrumento = async function(key){
   else if(key==='sas2') scores = scoreSAS2(answers);
   else if(key==='pss14') scores = scorePSS14(answers);
   else if(key==='abq') scores = scoreABQ(answers);
+  else if(key==='sms28') scores = scoreSMS28(answers);
+  else if(key==='teosq') scores = scoreTEOSQ(answers);
+  else if(key==='autoeficacia') scores = scoreAutoeficacia(answers);
 
   const payload = {
     evaluation_id: currentEvaluationId,
@@ -667,7 +788,37 @@ function renderInstrumentoResultado(key, s){
       ${scoreCardHtml('Burnout global', s.global.toFixed(2)+' / 5', levelABQ(s.global))}
     </div><p class="hint">Promedio por ítem (1-5). ≥3.5 alto · 2.5-3.49 moderado · &lt;2.5 bajo.</p>`;
   }
+  if(key==='sms28'){
+    const neutro = v => `<div class="score-card"><div class="sc-label">${v.l}</div><div class="sc-value">${v.v.toFixed(2)} / 7</div></div>`;
+    return `<div class="score-grid">
+      ${neutro({l:'Intrínseca · Conocer', v:s.im_conocer})}
+      ${neutro({l:'Intrínseca · Logro', v:s.im_logro})}
+      ${neutro({l:'Intrínseca · Estimulación', v:s.im_estimulo})}
+      ${neutro({l:'Extrínseca · Identificada', v:s.em_identificada})}
+      ${neutro({l:'Extrínseca · Introyectada', v:s.em_introyectada})}
+      ${neutro({l:'Extrínseca · Externa', v:s.em_externa})}
+      ${scoreCardHtml('Amotivación', s.amotivacion.toFixed(2)+' / 7', s.amotivacion>=4?'rojo':(s.amotivacion>=2.5?'amarillo':'verde'))}
+      ${scoreCardHtml('Índice de autodeterminación', s.indiceAutodeterminacion.toFixed(2), s.indiceAutodeterminacion>=5?'verde':(s.indiceAutodeterminacion>=0?'amarillo':'rojo'))}
+    </div><p class="hint">Las 6 primeras subescalas son un perfil descriptivo (no hay "bueno/malo" per se). El índice de autodeterminación resume el conjunto: valores altos = motivación más autónoma/saludable; valores negativos = motivación predominantemente controlada o ausente.</p>`;
+  }
+  if(key==='teosq'){
+    const dominante = s.tarea>s.ego? 'orientación a la TAREA (compite contra su propia mejora)': s.ego>s.tarea? 'orientación al EGO (compite por el resultado y la comparación social)':'un perfil mixto, sin orientación claramente dominante';
+    return `<div class="score-grid">
+      ${scoreCardHtml('Orientación a la tarea', s.tarea.toFixed(2)+' / 5', 'verde')}
+      ${scoreCardHtml('Orientación al ego', s.ego.toFixed(2)+' / 5', 'amarillo')}
+    </div><p class="hint">Perfil dominante: ${dominante}. Ninguna de las dos orientaciones es "mala" en sí misma; el riesgo aparece cuando el ego es alto y la tarea es baja (rendimiento dependiente exclusivamente del resultado).</p>`;
+  }
+  if(key==='autoeficacia'){
+    return `<div class="score-grid">
+      ${scoreCardHtml('Antes de competir', s.previa.toFixed(2)+' / 5', levelAutoefi(s.previa))}
+      ${scoreCardHtml('Bajo presión', s.presion.toFixed(2)+' / 5', levelAutoefi(s.presion))}
+      ${scoreCardHtml('Después de un error', s.error.toFixed(2)+' / 5', levelAutoefi(s.error))}
+      ${scoreCardHtml('Cierre de competencia', s.cierre.toFixed(2)+' / 5', levelAutoefi(s.cierre))}
+      ${scoreCardHtml('Autoeficacia global', s.global.toFixed(2)+' / 5', levelAutoefi(s.global))}
+    </div><p class="hint">≥4 alta · 2.5-3.99 moderada · &lt;2.5 baja.</p>`;
+  }
 }
+function levelAutoefi(avg){ if(avg>=4) return 'verde'; if(avg>=2.5) return 'amarillo'; return 'rojo'; }
 
 function buildInterpretacionAnsiedadEstres(){
   const csai = moduleResults.csai2.scores;
@@ -698,6 +849,47 @@ function buildInterpretacionAnsiedadEstres(){
     sintesis = 'El perfil integrado muestra algunos indicadores a monitorear. Se sugiere trabajar estrategias de regulación (respiración, activación óptima, rutinas pre-competitivas) y reevaluar en la siguiente ventana de seguimiento.';
   } else {
     sintesis = 'El perfil integrado muestra múltiples indicadores concurrentes de ansiedad, estrés y/o desgaste deportivo. Se recomienda una intervención psicológica activa y coordinación con el cuerpo técnico sobre carga de entrenamiento y competencia, con reevaluación en un plazo breve (2-4 semanas).';
+  }
+
+  return lines.map(l=>`<p>${l}</p>`).join('') + `<p><strong>${sintesis}</strong></p>`;
+}
+
+function buildInterpretacionMotivacion(){
+  const sms = moduleResults.sms28.scores;
+  const teosq = moduleResults.teosq.scores;
+  const autoefi = moduleResults.autoeficacia.scores;
+  const lines = [];
+
+  if(sms.amotivacion>=4) lines.push('El SMS-28 muestra amotivación elevada: el/la deportista está cuestionando activamente si vale la pena continuar en su deporte.');
+  if(sms.indiceAutodeterminacion<0) lines.push('El índice de autodeterminación es negativo, lo que indica que la motivación actual está predominantemente sostenida por presión externa o interna (obligación, aprobación de otros) más que por interés genuino.');
+  else if(sms.indiceAutodeterminacion>=5) lines.push('El índice de autodeterminación es alto, lo que sugiere una motivación mayormente autónoma y protectora frente al desgaste.');
+
+  if(teosq.ego>teosq.tarea+0.5) lines.push('El TEOSQ muestra una orientación al ego claramente predominante sobre la orientación a la tarea, lo que puede asociarse a mayor vulnerabilidad emocional ante derrotas o comparaciones desfavorables.');
+  else if(teosq.tarea>teosq.ego+0.5) lines.push('El TEOSQ muestra una orientación a la tarea predominante, un perfil generalmente protector frente a la presión por el resultado.');
+
+  if(autoefi.global<2.5) lines.push('La autoeficacia deportiva situacional es baja en general, lo que puede limitar el rendimiento independientemente de la capacidad técnica real.');
+  if(autoefi.presion<2.5) lines.push('Particularmente, la autoeficacia bajo presión es baja — un blanco claro para trabajo de preparación mental en momentos de marcador ajustado o alta exigencia.');
+  if(autoefi.error<2.5) lines.push('La autoeficacia tras cometer un error es baja, lo que sugiere dificultad para recuperarse rápidamente de fallos durante la competencia (rumiación post-error).');
+
+  // Cruce con Ansiedad + Estrés si ya están disponibles
+  if(moduleResults.abq && moduleResults.abq.completed){
+    const abq = moduleResults.abq.scores;
+    if(sms.amotivacion>=4 && abq.global>=3.5) lines.push('La amotivación detectada en el SMS-28 es consistente con el burnout ya identificado en el ABQ — ambos instrumentos convergen en un cuadro de desgaste motivacional relevante.');
+  }
+  if(moduleResults.csai2 && moduleResults.csai2.completed){
+    const csai = moduleResults.csai2.scores;
+    if(teosq.ego>teosq.tarea+0.5 && csai.cognitiva>=3) lines.push('La orientación al ego predominante es consistente con la ansiedad cognitiva elevada del CSAI-2R: competir principalmente por el resultado y la comparación social puede estar alimentando la preocupación por el juicio de terceros.');
+    if(autoefi.global<2.5 && csai.confianza<2) lines.push('La baja autoeficacia situacional coincide con la baja autoconfianza reportada en el CSAI-2R, reforzando la necesidad de trabajar la confianza como eje central de la intervención.');
+  }
+
+  let sintesis;
+  const riesgos = [sms.amotivacion>=4, sms.indiceAutodeterminacion<0, teosq.ego>teosq.tarea+0.5, autoefi.global<2.5].filter(Boolean).length;
+  if(riesgos===0){
+    sintesis = 'El perfil motivacional es favorable: motivación mayormente autónoma, orientación equilibrada o hacia la tarea, y autoeficacia adecuada. Se recomienda mantener las estrategias actuales de motivación y reforzar el enfoque en el proceso más que en el resultado.';
+  } else if(riesgos<=2){
+    sintesis = 'El perfil motivacional muestra algunos puntos a trabajar. Se sugiere reforzar la orientación a la tarea (metas de proceso y mejora personal) y trabajar autoeficacia específica en los momentos más débiles identificados.';
+  } else {
+    sintesis = 'El perfil motivacional muestra múltiples indicadores de riesgo (amotivación, motivación controlada, orientación al ego dominante y/o baja autoeficacia). Se recomienda una intervención motivacional activa, en coordinación con el entrenador, revisando también la carga competitiva y el estilo de retroalimentación que recibe el/la deportista.';
   }
 
   return lines.map(l=>`<p>${l}</p>`).join('') + `<p><strong>${sintesis}</strong></p>`;
