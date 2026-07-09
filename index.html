@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BPI · Batería Psicodeportiva Integral</title>
+<style>
+  :root{
+    --ink:#1B2A3A; --bg:#EEF2F6; --panel:#FFFFFF;
+    --primary:#2C5F7C; --primary-dark:#1E4459; --accent:#6B9AB0;
+    --verde:#3E8E5A; --verde-bg:#E7F4EC;
+    --amarillo:#B8862E; --amarillo-bg:#FBF3E1;
+    --rojo:#C0524A; --rojo-bg:#FBEBE9;
+    --gray:#66798C; --border:#DCE4EA;
+    --mono:"Consolas","SFMono-Regular",Menlo,monospace;
+    --serif:Georgia,"Times New Roman",serif;
+    --sans:"Segoe UI",system-ui,-apple-system,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14.5px;}
+  h1,h2,h3{font-family:var(--serif);font-weight:600;color:var(--primary-dark);margin:0 0 .4em;}
+  .app{display:flex;min-height:100vh;}
+  .sidebar{width:250px;flex-shrink:0;background:var(--primary-dark);color:#EAF1F5;display:flex;flex-direction:column;padding:22px 0;}
+  .brand{padding:0 20px 18px;border-bottom:1px solid rgba(255,255,255,.15);margin-bottom:14px;}
+  .brand .title{font-family:var(--serif);font-size:19px;color:#fff;}
+  .brand .sub{font-size:11px;color:#A9C2CE;letter-spacing:1.5px;text-transform:uppercase;margin-top:2px;}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:9px 20px;cursor:pointer;color:#D3E1E8;font-size:13.5px;}
+  .nav-item:hover{background:rgba(255,255,255,.06);}
+  .nav-item.active{background:rgba(255,255,255,.1);font-weight:600;color:#fff;}
+  .user-chip{margin-top:auto;padding:14px 20px;font-size:12px;color:#A9C2CE;border-top:1px solid rgba(255,255,255,.15);}
+  .user-chip button{margin-top:8px;width:100%;}
+  .main{flex:1;padding:32px 40px;max-width:980px;}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:28px 32px;margin-bottom:22px;}
+  .panel-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--border);}
+  .eyebrow{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:3px;}
+  label{display:block;font-size:13px;color:var(--gray);margin-bottom:4px;font-weight:600;}
+  input[type=text],input[type=email],input[type=password],input[type=date],input[type=number],textarea,select{
+    width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:6px;font-family:var(--sans);font-size:14px;color:var(--ink);background:#FCFDFE;margin-bottom:14px;
+  }
+  textarea{min-height:70px;resize:vertical;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 20px;}
+  button{font-family:var(--sans);cursor:pointer;border:none;border-radius:6px;padding:10px 18px;font-size:13.5px;font-weight:600;}
+  .btn-primary{background:var(--primary);color:#fff;}
+  .btn-primary:hover{background:var(--primary-dark);}
+  .btn-ghost{background:transparent;color:var(--primary);border:1px solid var(--primary);}
+  .btn-danger{background:transparent;color:var(--rojo);border:1px solid var(--rojo);}
+  .btn-row{display:flex;gap:10px;margin-top:16px;}
+  .error-box{background:var(--rojo-bg);color:var(--rojo);border:1px solid #E9C0BC;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;}
+  .ok-box{background:var(--verde-bg);color:var(--verde);border:1px solid #BFE0CC;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;}
+  .hint{font-size:12px;color:var(--gray);margin:-8px 0 14px;font-style:italic;}
+  .athlete-row{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;}
+  .athlete-row:hover{border-color:var(--accent);}
+  .athlete-row .aname{font-weight:700;font-size:15px;}
+  .athlete-row .ameta{color:var(--gray);font-size:12.5px;margin-top:2px;}
+  .tag{display:inline-block;background:#F1F6F9;color:var(--primary);border-radius:12px;padding:2px 10px;font-size:11px;font-weight:600;margin-right:6px;}
+  .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);}
+  .login-box{background:#fff;border:1px solid var(--border);border-radius:12px;padding:36px 40px;width:360px;}
+  .login-box .brand-title{font-family:var(--serif);font-size:24px;color:var(--primary-dark);text-align:center;margin-bottom:4px;}
+  .login-box .brand-sub{text-align:center;color:var(--gray);font-size:12px;letter-spacing:1px;text-transform:uppercase;margin-bottom:24px;}
+  .eval-row{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border:1px solid var(--border);border-radius:6px;margin-bottom:8px;font-size:13px;}
+  .badge-estado{padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;}
+  .badge-estado.en_progreso{background:var(--amarillo-bg);color:var(--amarillo);}
+  .badge-estado.completa{background:var(--verde-bg);color:var(--verde);}
+  .spinner{display:inline-block;width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;margin-right:6px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+<div id="root">
+  <div class="login-wrap"><div class="login-box"><p style="text-align:center;color:var(--gray);">Cargando…</p></div></div>
+</div>
+
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+/* ============================================================
+   CONFIGURACIÓN — reemplazá estos dos valores con los de TU
+   proyecto de Supabase (Project Settings → API).
+   ============================================================ */
+const SUPABASE_URL = 'https://oteeceupgmcvstpmgtwl.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im90ZWVjZXVwZ21jdnN0cG1ndHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1OTcwNjAsImV4cCI6MjA5OTE3MzA2MH0.jaMCi0O7RGdIfVKCHXRU6OhR3DamSUwuRKTURaZtSos';
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const root = document.getElementById('root');
+let session = null;
+let activeView = 'lista';
+let athletes = [];
+let currentAthleteId = null;
+let currentAthlete = null;
+let evaluations = [];
+
+function esc(s){ return (s===null||s===undefined?'':s.toString()).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+/* ============================================================
+   AUTENTICACIÓN
+   ============================================================ */
+async function init(){
+  const { data } = await supabase.auth.getSession();
+  session = data.session;
+  supabase.auth.onAuthStateChange((_event, s)=>{ session = s; render(); });
+  render();
+}
+
+function renderLogin(errorMsg){
+  root.innerHTML = `
+  <div class="login-wrap"><div class="login-box">
+    <div class="brand-title">BPI</div>
+    <div class="brand-sub">Batería Psicodeportiva Integral</div>
+    ${errorMsg? `<div class="error-box">${esc(errorMsg)}</div>`:''}
+    <label>Correo electrónico</label>
+    <input type="email" id="loginEmail">
+    <label>Contraseña</label>
+    <input type="password" id="loginPassword">
+    <div class="btn-row"><button class="btn-primary" style="width:100%;" onclick="window.doLogin()">Ingresar</button></div>
+    <p class="hint" style="text-align:center;">Acceso exclusivo para el profesional. El usuario se crea desde el panel de Supabase.</p>
+  </div></div>`;
+}
+window.doLogin = async function(){
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  if(!email || !password){ renderLogin('Completá correo y contraseña.'); return; }
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if(error){ renderLogin('No se pudo iniciar sesión: ' + error.message); return; }
+  const { data } = await supabase.auth.getSession();
+  session = data.session;
+  activeView='lista';
+  await loadAthletes();
+  render();
+};
+window.doLogout = async function(){
+  await supabase.auth.signOut();
+  session = null;
+  render();
+};
+
+/* ============================================================
+   CARGA DE DATOS
+   ============================================================ */
+async function loadAthletes(){
+  const { data, error } = await supabase.from('athletes').select('*').eq('activo', true).order('created_at', {ascending:false});
+  if(error){ console.error(error); athletes = []; return; }
+  athletes = data || [];
+}
+async function loadEvaluations(athleteId){
+  const { data, error } = await supabase.from('evaluations').select('*').eq('athlete_id', athleteId).order('fecha_evaluacion', {ascending:false});
+  if(error){ console.error(error); evaluations = []; return; }
+  evaluations = data || [];
+}
+
+/* ============================================================
+   RENDER PRINCIPAL
+   ============================================================ */
+function render(){
+  if(!session){ renderLogin(); return; }
+  let bodyHtml = '';
+  if(activeView==='lista') bodyHtml = viewLista();
+  else if(activeView==='nuevo') bodyHtml = viewNuevoDeportista();
+  else if(activeView==='ficha') bodyHtml = viewFicha();
+
+  root.innerHTML = `
+  <div class="app">
+    <div class="sidebar">
+      <div class="brand"><div class="title">BPI</div><div class="sub">Batería Psicodeportiva</div></div>
+      <div class="nav-item ${activeView==='lista'?'active':''}" onclick="window.gotoLista()">Deportistas</div>
+      <div class="nav-item ${activeView==='nuevo'?'active':''}" onclick="window.gotoNuevo()">+ Nuevo deportista</div>
+      <div class="user-chip">
+        Conectado como<br><strong>${esc(session.user.email)}</strong>
+        <button class="btn-ghost" style="margin-top:10px;" onclick="window.doLogout()">Cerrar sesión</button>
+      </div>
+    </div>
+    <div class="main" id="mainArea">${bodyHtml}</div>
+  </div>`;
+}
+
+window.gotoLista = async function(){ activeView='lista'; render(); await loadAthletes(); render(); };
+window.gotoNuevo = function(){ activeView='nuevo'; render(); };
+window.abrirFicha = async function(id){
+  currentAthleteId = id;
+  currentAthlete = athletes.find(a=>a.id===id) || null;
+  activeView='ficha';
+  render();
+  await loadEvaluations(id);
+  render();
+};
+
+/* ============================================================
+   VISTA: LISTA DE DEPORTISTAS
+   ============================================================ */
+function viewLista(){
+  let rows = athletes.length===0
+    ? `<p class="hint">Todavía no cargaste deportistas.</p>`
+    : athletes.map(a=>`
+      <div class="athlete-row">
+        <div>
+          <div class="aname">${esc(a.nombre)}</div>
+          <div class="ameta">
+            <span class="tag">${esc(a.deporte||'—')}</span>
+            <span class="tag">${esc(a.categoria||'—')}</span>
+            ${a.edad? a.edad+' años · ':''}${esc(a.club||'')}
+          </div>
+        </div>
+        <div class="btn-row" style="margin:0;">
+          <button class="btn-primary" onclick="window.abrirFicha('${a.id}')">Abrir ficha</button>
+          <button class="btn-danger" onclick="window.eliminarDeportista('${a.id}')">Eliminar</button>
+        </div>
+      </div>`).join('');
+  return `<div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Batería Psicodeportiva Integral</div><h1>Deportistas</h1></div></div>
+    <div id="listaMsg"></div>
+    ${rows}
+    <div class="btn-row"><button class="btn-primary" onclick="window.gotoNuevo()">+ Nuevo deportista</button></div>
+  </div>`;
+}
+window.eliminarDeportista = async function(id){
+  if(!confirm('¿Eliminar este deportista y todas sus evaluaciones? Esta acción no se puede deshacer.')) return;
+  const { error } = await supabase.from('athletes').delete().eq('id', id);
+  if(error){ alert('Error al eliminar: '+error.message); return; }
+  await loadAthletes(); render();
+};
+
+/* ============================================================
+   VISTA: NUEVO DEPORTISTA
+   ============================================================ */
+function viewNuevoDeportista(){
+  return `<div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Nuevo registro</div><h1>Datos del deportista</h1></div></div>
+    <div id="nuevoMsg"></div>
+    <div class="grid2">
+      <div><label>Nombre completo *</label><input type="text" id="nd_nombre"></div>
+      <div><label>Edad</label><input type="number" id="nd_edad"></div>
+      <div><label>Fecha de nacimiento</label><input type="date" id="nd_fechaNac"></div>
+      <div><label>Sexo</label><select id="nd_sexo"><option value="">—</option><option>Masculino</option><option>Femenino</option><option>Otro</option></select></div>
+      <div><label>Deporte</label><input type="text" id="nd_deporte" placeholder="Ej. Básquet, Fútbol, Atletismo"></div>
+      <div><label>Modalidad</label><select id="nd_modalidad"><option value="">—</option><option value="individual">Individual</option><option value="colectivo">Colectivo</option></select></div>
+      <div><label>Categoría / rama de edad</label><input type="text" id="nd_categoria" placeholder="Ej. Sub-17, Mayores"></div>
+      <div><label>Posición / especialidad</label><input type="text" id="nd_posicion"></div>
+      <div><label>Club / institución</label><input type="text" id="nd_club"></div>
+      <div><label>Nivel competitivo</label>
+        <select id="nd_nivel">
+          <option value="">—</option>
+          <option>Recreativo</option><option>Formativo</option><option>Amateur</option>
+          <option>Semi-profesional</option><option>Profesional</option><option>Selección</option>
+        </select>
+      </div>
+      <div><label>Años de experiencia</label><input type="number" id="nd_anios"></div>
+      <div><label>Mano/pie dominante</label><select id="nd_mano"><option value="">—</option><option>Derecha</option><option>Izquierda</option><option>Ambidiestro</option></select></div>
+      <div><label>Entrenador a cargo</label><input type="text" id="nd_entrenador"></div>
+    </div>
+    <label>Motivo de la evaluación</label>
+    <textarea id="nd_motivo" placeholder="Ej. pre-temporada, retorno post-lesión, proceso de selección, bajo rendimiento..."></textarea>
+    <label>Lesiones relevantes recientes</label>
+    <textarea id="nd_lesiones"></textarea>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="window.guardarDeportista()">Guardar deportista</button>
+      <button class="btn-ghost" onclick="window.gotoLista()">Cancelar</button>
+    </div>
+  </div>`;
+}
+window.guardarDeportista = async function(){
+  const g = id => document.getElementById(id).value.trim();
+  const nombre = g('nd_nombre');
+  if(!nombre){ document.getElementById('nuevoMsg').innerHTML = `<div class="error-box">El nombre es obligatorio.</div>`; return; }
+  const payload = {
+    user_id: session.user.id,
+    nombre,
+    edad: g('nd_edad')? Number(g('nd_edad')): null,
+    fecha_nacimiento: g('nd_fechaNac') || null,
+    sexo: g('nd_sexo') || null,
+    deporte: g('nd_deporte') || null,
+    modalidad: g('nd_modalidad') || null,
+    categoria: g('nd_categoria') || null,
+    posicion: g('nd_posicion') || null,
+    club: g('nd_club') || null,
+    nivel_competitivo: g('nd_nivel') || null,
+    anios_experiencia: g('nd_anios')? Number(g('nd_anios')): null,
+    mano_dominante: g('nd_mano') || null,
+    entrenador: g('nd_entrenador') || null,
+    motivo_evaluacion: g('nd_motivo') || null,
+    lesiones: g('nd_lesiones') || null,
+  };
+  const btn = event.target; btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Guardando…';
+  const { error } = await supabase.from('athletes').insert(payload);
+  if(error){
+    document.getElementById('nuevoMsg').innerHTML = `<div class="error-box">Error al guardar: ${esc(error.message)}</div>`;
+    btn.disabled = false; btn.textContent = 'Guardar deportista';
+    return;
+  }
+  await loadAthletes();
+  activeView = 'lista';
+  render();
+};
+
+/* ============================================================
+   VISTA: FICHA DEL DEPORTISTA (datos + evaluaciones)
+   ============================================================ */
+function viewFicha(){
+  if(!currentAthlete) return `<div class="panel"><p>Cargando ficha…</p></div>`;
+  const a = currentAthlete;
+  const evalRows = evaluations.length===0
+    ? `<p class="hint">Todavía no hay evaluaciones registradas para este deportista.</p>`
+    : evaluations.map(e=>`
+      <div class="eval-row">
+        <div>${esc(e.fecha_evaluacion)} — ${esc(e.contexto||'Sin contexto')} <span class="badge-estado ${e.estado}">${e.estado==='completa'?'Completa':'En progreso'}</span></div>
+        <div class="btn-row" style="margin:0;">
+          <button class="btn-ghost" onclick="alert('Los módulos de evaluación se habilitan en la próxima fase.')">Abrir</button>
+          <button class="btn-danger" onclick="window.eliminarEvaluacion('${e.id}')">Eliminar</button>
+        </div>
+      </div>`).join('');
+  return `
+  <div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Ficha del deportista</div><h1>${esc(a.nombre)}</h1></div>
+      <button class="btn-ghost" onclick="window.gotoLista()">← Volver</button>
+    </div>
+    <div class="grid2">
+      <div><strong>Deporte:</strong> ${esc(a.deporte||'—')}</div>
+      <div><strong>Categoría:</strong> ${esc(a.categoria||'—')}</div>
+      <div><strong>Modalidad:</strong> ${esc(a.modalidad||'—')}</div>
+      <div><strong>Nivel:</strong> ${esc(a.nivel_competitivo||'—')}</div>
+      <div><strong>Club:</strong> ${esc(a.club||'—')}</div>
+      <div><strong>Entrenador:</strong> ${esc(a.entrenador||'—')}</div>
+      <div><strong>Edad:</strong> ${a.edad||'—'}</div>
+      <div><strong>Años de experiencia:</strong> ${a.anios_experiencia||'—'}</div>
+    </div>
+    ${a.motivo_evaluacion? `<p><strong>Motivo de evaluación:</strong> ${esc(a.motivo_evaluacion)}</p>`:''}
+    ${a.lesiones? `<p><strong>Lesiones relevantes:</strong> ${esc(a.lesiones)}</p>`:''}
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Historial</div><h1>Evaluaciones</h1></div></div>
+    <div id="evalMsg"></div>
+    ${evalRows}
+    <div class="grid2" style="margin-top:16px;">
+      <div><label>Fecha</label><input type="date" id="ne_fecha" value="${new Date().toISOString().slice(0,10)}"></div>
+      <div><label>Evaluador</label><input type="text" id="ne_evaluador"></div>
+      <div style="grid-column:1/3;"><label>Contexto</label>
+        <select id="ne_contexto">
+          <option value="">—</option>
+          <option>Pre-temporada</option><option>Mitad de temporada</option><option>Post-temporada</option>
+          <option>Retorno post-lesión</option><option>Proceso de selección</option><option>Seguimiento</option>
+        </select>
+      </div>
+    </div>
+    <div class="btn-row"><button class="btn-primary" onclick="window.crearEvaluacion()">+ Nueva evaluación</button></div>
+  </div>`;
+}
+window.crearEvaluacion = async function(){
+  const fecha = document.getElementById('ne_fecha').value;
+  const evaluador = document.getElementById('ne_evaluador').value.trim();
+  const contexto = document.getElementById('ne_contexto').value;
+  const payload = { athlete_id: currentAthleteId, user_id: session.user.id, fecha_evaluacion: fecha, evaluador, contexto };
+  const { error } = await supabase.from('evaluations').insert(payload);
+  if(error){ document.getElementById('evalMsg').innerHTML = `<div class="error-box">Error: ${esc(error.message)}</div>`; return; }
+  await loadEvaluations(currentAthleteId);
+  render();
+};
+window.eliminarEvaluacion = async function(id){
+  if(!confirm('¿Eliminar esta evaluación?')) return;
+  const { error } = await supabase.from('evaluations').delete().eq('id', id);
+  if(error){ alert('Error: '+error.message); return; }
+  await loadEvaluations(currentAthleteId);
+  render();
+};
+
+/* ============================================================
+   INIT
+   ============================================================ */
+init().then(async ()=>{ if(session){ await loadAthletes(); render(); } });
+</script>
+</body>
+</html>
