@@ -120,6 +120,7 @@ let evaluations = [];
 let currentEvaluationId = null;
 let currentEvaluation = null;
 let moduleResults = {}; // { module_key: {raw_data, scores, completed} }
+let cog = null; // estado transitorio de la tarea cognitiva interactiva en curso
 
 function esc(s){ return (s===null||s===undefined?'':s.toString()).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
@@ -205,6 +206,10 @@ function render(){
   else if(activeView==='ficha') bodyHtml = viewFicha();
   else if(activeView==='evaluacion') bodyHtml = viewEvaluacion();
   else if(INSTRUMENTS[activeView]) bodyHtml = viewInstrumento(activeView);
+  else if(activeView==='reaction_simple') bodyHtml = viewReactionSimple();
+  else if(activeView==='reaction_choice') bodyHtml = viewReactionChoice();
+  else if(activeView==='atencion_sostenida') bodyHtml = viewAtencionSostenida();
+  else if(activeView==='memoria_nback') bodyHtml = viewMemoriaNback();
 
   root.innerHTML = `
   <div class="app">
@@ -694,6 +699,15 @@ window.abrirEvaluacion = async function(id){
 
 const GRUPO_ANSIEDAD = ['csai2','sas2','pss14','abq'];
 const GRUPO_MOTIVACION = ['sms28','teosq','autoeficacia'];
+const GRUPO_COGNITIVO = ['reaction_simple','reaction_choice','atencion_sostenida','memoria_nback'];
+
+const COGNITIVE_TASKS = {
+  reaction_simple: {label:"Tiempo de reacción simple", desc:"Reacción ante una única señal. Mide velocidad de respuesta motora básica."},
+  reaction_choice: {label:"Tiempo de reacción de elección (Go/No-Go)", desc:"Responder solo ante la señal correcta e inhibir ante la incorrecta. Mide control inhibitorio/impulsividad."},
+  atencion_sostenida: {label:"Atención sostenida (CPT deportivo)", desc:"Detectar un estímulo poco frecuente durante varios minutos. Mide vigilancia y caída atencional en el tiempo."},
+  memoria_nback: {label:"Memoria de trabajo (n-back)", desc:"Indicar si el estímulo actual coincide con uno anterior en la secuencia. Mide memoria de trabajo."},
+};
+function getMeta(key){ return INSTRUMENTS[key] || COGNITIVE_TASKS[key]; }
 
 function grupoEstado(){
   const base = ['mood','fss2'];
@@ -703,11 +717,13 @@ function grupoEstado(){
 
 function moduleCardsHtml(keys){
   return keys.map(key=>{
-    const inst = INSTRUMENTS[key];
-    const done = moduleResults[key] && moduleResults[key].completed;
+    const inst = getMeta(key);
+    const result = moduleResults[key];
+    const done = result && result.completed;
     return `<div class="module-card">
       <div><div class="mname">${esc(inst.label)}</div><div class="mdesc">${esc(inst.desc)}</div></div>
       <div style="display:flex;align-items:center;gap:10px;">
+        ${done && result.dificultad ? `<span class="status-pill pendiente">${esc(result.dificultad)}</span>`:''}
         <span class="status-pill ${done?'completo':'pendiente'}">${done?'Completo':'Pendiente'}</span>
         <button class="btn-primary" onclick="window.gotoInstrumento('${key}')">${done?'Revisar':'Aplicar'}</button>
       </div>
@@ -723,6 +739,7 @@ function viewEvaluacion(){
   const motivacionDone = GRUPO_MOTIVACION.every(k=> moduleResults[k] && moduleResults[k].completed);
   const grupoEstadoKeys = grupoEstado();
   const estadoDone = grupoEstadoKeys.every(k=> moduleResults[k] && moduleResults[k].completed);
+  const cognitivoDone = GRUPO_COGNITIVO.every(k=> moduleResults[k] && moduleResults[k].completed);
 
   return `<div class="panel">
     <div class="panel-head"><div><div class="eyebrow">${esc(currentAthlete.nombre)}</div><h1>Evaluación del ${esc(e.fecha_evaluacion)}</h1></div>
@@ -748,6 +765,13 @@ function viewEvaluacion(){
     ${currentAthlete.modalidad!=='colectivo' ? `<p class="hint">Este deportista está registrado como modalidad individual, por eso el GEQ (cohesión de equipo) no se muestra — no aplica.</p>`:''}
     ${moduleCardsHtml(grupoEstadoKeys)}
     ${estadoDone ? `<div class="interpretation-box">${buildInterpretacionEstado()}</div>` : `<p class="hint">La interpretación integrada aparece al completar ${grupoEstadoKeys.length} instrumento(s).</p>`}
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Tanda 4</div><h1>Evaluación cognitiva interactiva</h1></div></div>
+    <p class="hint">Cada tarea tiene 3 niveles de dificultad. Elegí el nivel al tocar "Aplicar".</p>
+    ${moduleCardsHtml(GRUPO_COGNITIVO)}
+    ${cognitivoDone ? `<div class="interpretation-box">${buildInterpretacionCognitiva()}</div>` : `<p class="hint">La interpretación integrada aparece al completar las 4 tareas.</p>`}
   </div>
   `;
 }
@@ -1129,6 +1153,449 @@ function buildInterpretacionEstado(){
     sintesis = 'Hay un punto a monitorear en este bloque. Se sugiere reevaluar en la siguiente ventana de seguimiento y trabajar específicamente el área señalada.';
   } else {
     sintesis = 'Hay múltiples indicadores concurrentes en este bloque (ánimo, flow y/o cohesión). Se recomienda priorizar este frente en la intervención psicológica y coordinar con el cuerpo técnico ajustes de carga, clima de equipo o ambos.';
+  }
+
+  return lines.map(l=>`<p>${l}</p>`).join('') + `<p><strong>${sintesis}</strong></p>`;
+}
+
+/* ============================================================
+   TANDA 4 — EVALUACIÓN COGNITIVA INTERACTIVA
+   ============================================================ */
+function randBetween(a,b){ return a + Math.random()*(b-a); }
+function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+
+async function guardarResultadoCognitivo(key, dificultad, raw, scores){
+  const payload = {
+    evaluation_id: currentEvaluationId, user_id: session.user.id, module_key: key,
+    dificultad, raw_data: raw, scores, completed: true, updated_at: new Date().toISOString(),
+  };
+  const { error } = await supabase.from('module_results').upsert(payload, { onConflict: 'evaluation_id,module_key' });
+  cog = null;
+  if(error){ alert('Error al guardar: '+error.message); return; }
+  await loadModuleResults(currentEvaluationId);
+  render();
+}
+function renderDifficultySelector(key){
+  const labels = {principiante:'Principiante', intermedio:'Intermedio', avanzado:'Avanzado'};
+  const btns = Object.keys(labels).map(d=>`<button class="btn-primary" onclick="window.iniciarTareaCognitiva('${key}','${d}')">${labels[d]}</button>`).join(' ');
+  return `<div class="btn-row">${btns}</div>`;
+}
+window.iniciarTareaCognitiva = function(key, dificultad){
+  if(key==='reaction_simple') return window.iniciarReactionSimple(dificultad);
+  if(key==='reaction_choice') return window.iniciarReactionChoice(dificultad);
+  if(key==='atencion_sostenida') return window.iniciarAtencionSostenida(dificultad);
+  if(key==='memoria_nback') return window.iniciarMemoriaNback(dificultad);
+};
+function volverDeTareaCognitiva(){ cog = null; activeView='evaluacion'; render(); }
+
+/* ---------- 1) Tiempo de reacción simple ---------- */
+const REACTION_SIMPLE_PARAMS = {
+  principiante: {trials:8, minDelay:2000, maxDelay:4000},
+  intermedio: {trials:12, minDelay:1500, maxDelay:3500},
+  avanzado: {trials:16, minDelay:800, maxDelay:2500},
+};
+function viewReactionSimple(){
+  if(cog && cog.task==='reaction_simple'){
+    return `<div class="panel">
+      <div class="panel-head"><div><div class="eyebrow">Tiempo de reacción simple · ${cog.dificultad}</div><h1>Ensayo ${Math.min(cog.currentTrial+1,cog.total)} de ${cog.total}</h1></div></div>
+      <div id="reactionStage"></div>
+    </div>`;
+  }
+  const result = moduleResults.reaction_simple;
+  return `<div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Evaluación cognitiva</div><h1>Tiempo de reacción simple</h1></div>
+      <button class="btn-ghost" onclick="window.volverDeTareaCognitiva()">← Volver</button></div>
+    <p class="hint">Hacé clic apenas la pantalla se ponga verde. Si hacés clic antes, se cuenta como anticipación.</p>
+    ${result && result.completed ? renderReactionSimpleResults(result.scores) : ''}
+    ${renderDifficultySelector('reaction_simple')}
+  </div>`;
+}
+window.volverDeTareaCognitiva = volverDeTareaCognitiva;
+window.iniciarReactionSimple = function(dificultad){
+  const p = REACTION_SIMPLE_PARAMS[dificultad];
+  cog = { task:'reaction_simple', dificultad, total:p.trials, currentTrial:0, trials:[], falseStarts:0, params:p, phase:'pendiente' };
+  activeView='reaction_simple'; render();
+  setTimeout(nextReactionSimpleTrial, 400);
+};
+function nextReactionSimpleTrial(){
+  if(!cog || cog.task!=='reaction_simple') return;
+  if(cog.currentTrial>=cog.total){ return finishReactionSimple(); }
+  cog.phase='esperando';
+  renderReactionStage();
+  const delay = randBetween(cog.params.minDelay, cog.params.maxDelay);
+  cog.timeoutId = setTimeout(()=>{
+    if(!cog || cog.task!=='reaction_simple') return;
+    cog.phase='activo';
+    cog.stimulusTime = Date.now();
+    renderReactionStage();
+  }, delay);
+}
+function renderReactionStage(){
+  const el = document.getElementById('reactionStage');
+  if(!el) return;
+  if(cog.phase==='esperando'){
+    el.innerHTML = `<div onclick="window.reactionSimpleClick()" style="height:220px;border-radius:10px;background:var(--rojo);display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;cursor:pointer;">Esperá... no hagas clic todavía</div>`;
+  } else if(cog.phase==='activo'){
+    el.innerHTML = `<div onclick="window.reactionSimpleClick()" style="height:220px;border-radius:10px;background:var(--verde);display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;font-weight:700;cursor:pointer;">¡CLIC AHORA!</div>`;
+  } else if(cog.phase==='feedback'){
+    const lastRt = cog.trials[cog.trials.length-1];
+    el.innerHTML = `<div style="height:220px;border-radius:10px;background:#F1F6F9;display:flex;align-items:center;justify-content:center;color:var(--primary-dark);font-size:18px;">${lastRt} ms</div>`;
+  }
+}
+window.reactionSimpleClick = function(){
+  if(!cog || cog.task!=='reaction_simple') return;
+  if(cog.phase==='esperando'){
+    clearTimeout(cog.timeoutId);
+    cog.falseStarts++;
+    const el = document.getElementById('reactionStage');
+    if(el) el.innerHTML = `<div style="height:220px;border-radius:10px;background:var(--amarillo-bg);display:flex;align-items:center;justify-content:center;color:var(--amarillo);font-size:16px;">Anticipación — esperá al verde</div>`;
+    setTimeout(nextReactionSimpleTrial, 900);
+    return;
+  }
+  if(cog.phase==='activo'){
+    const rt = Date.now() - cog.stimulusTime;
+    cog.trials.push(rt);
+    cog.currentTrial++;
+    cog.phase='feedback';
+    renderReactionStage();
+    setTimeout(nextReactionSimpleTrial, 700);
+  }
+};
+function finishReactionSimple(){
+  const trials = cog.trials;
+  const dificultad = cog.dificultad;
+  if(trials.length===0){ cog=null; render(); return; }
+  const mean = trials.reduce((a,b)=>a+b,0)/trials.length;
+  const variance = trials.reduce((a,b)=>a+(b-mean)*(b-mean),0)/trials.length;
+  const sd = Math.sqrt(variance);
+  const scores = { mean: Math.round(mean), sd: Math.round(sd), min: Math.min(...trials), max: Math.max(...trials), falseStarts: cog.falseStarts, total: trials.length };
+  guardarResultadoCognitivo('reaction_simple', dificultad, trials, scores);
+}
+function renderReactionSimpleResults(s){
+  const level = s.mean<=250 && s.falseStarts<=1 ? 'verde' : s.mean<=350 ? 'amarillo':'rojo';
+  return `<div class="score-grid">
+    ${scoreCardHtml('Tiempo medio', s.mean+' ms', level)}
+    ${scoreCardHtml('Variabilidad (SD)', s.sd+' ms', s.sd<=60?'verde':(s.sd<=100?'amarillo':'rojo'))}
+    ${scoreCardHtml('Más rápido', s.min+' ms', 'verde')}
+    ${scoreCardHtml('Más lento', s.max+' ms', 'amarillo')}
+    ${scoreCardHtml('Anticipaciones', s.falseStarts, s.falseStarts<=1?'verde':(s.falseStarts<=3?'amarillo':'rojo'))}
+  </div><p class="hint">Una SD alta indica inconsistencia en la respuesta (a veces rápido, a veces lento), lo cual puede ser tan relevante como el promedio.</p>`;
+}
+
+/* ---------- 2) Tiempo de reacción de elección (Go/No-Go) ---------- */
+const REACTION_CHOICE_PARAMS = {
+  principiante: {trials:12, noGoRatio:0.2, stimDuration:1200, isiMin:1000, isiMax:2000},
+  intermedio: {trials:16, noGoRatio:0.3, stimDuration:900, isiMin:700, isiMax:1500},
+  avanzado: {trials:20, noGoRatio:0.35, stimDuration:700, isiMin:500, isiMax:1200},
+};
+function viewReactionChoice(){
+  if(cog && cog.task==='reaction_choice'){
+    return `<div class="panel">
+      <div class="panel-head"><div><div class="eyebrow">Go/No-Go · ${cog.dificultad}</div><h1>Ensayo ${Math.min(cog.currentTrial+1,cog.total)} de ${cog.total}</h1></div></div>
+      <div id="choiceStage"></div>
+    </div>`;
+  }
+  const result = moduleResults.reaction_choice;
+  return `<div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Evaluación cognitiva</div><h1>Tiempo de reacción de elección (Go/No-Go)</h1></div>
+      <button class="btn-ghost" onclick="window.volverDeTareaCognitiva()">← Volver</button></div>
+    <p class="hint">Círculo verde: hacé clic. Cuadrado rojo: NO hagas clic.</p>
+    ${result && result.completed ? renderReactionChoiceResults(result.scores) : ''}
+    ${renderDifficultySelector('reaction_choice')}
+  </div>`;
+}
+window.iniciarReactionChoice = function(dificultad){
+  const p = REACTION_CHOICE_PARAMS[dificultad];
+  cog = {task:'reaction_choice', dificultad, total:p.trials, currentTrial:0, results:[], params:p, phase:'iti'};
+  activeView='reaction_choice'; render();
+  setTimeout(nextReactionChoiceTrial, 400);
+};
+function nextReactionChoiceTrial(){
+  if(!cog || cog.task!=='reaction_choice') return;
+  if(cog.currentTrial>=cog.total) return finishReactionChoice();
+  cog.phase='iti';
+  renderChoiceStage();
+  const isi = randBetween(cog.params.isiMin, cog.params.isiMax);
+  setTimeout(()=>{
+    if(!cog || cog.task!=='reaction_choice') return;
+    cog.stimType = Math.random()<cog.params.noGoRatio ? 'nogo':'go';
+    cog.responded = false;
+    cog.stimulusTime = Date.now();
+    cog.phase='stim';
+    renderChoiceStage();
+    cog.timeoutId = setTimeout(()=>{
+      if(!cog || cog.task!=='reaction_choice') return;
+      if(!cog.responded){
+        cog.results.push({type:cog.stimType, responded:false, rt:null});
+        cog.currentTrial++;
+        nextReactionChoiceTrial();
+      }
+    }, cog.params.stimDuration);
+  }, isi);
+}
+function renderChoiceStage(){
+  const el = document.getElementById('choiceStage');
+  if(!el) return;
+  if(cog.phase==='iti'){
+    el.innerHTML = `<div style="height:220px;border-radius:10px;background:#F1F6F9;"></div>`;
+  } else if(cog.phase==='stim'){
+    const color = cog.stimType==='go' ? 'var(--verde)':'var(--rojo)';
+    const radius = cog.stimType==='go' ? '50%':'8px';
+    el.innerHTML = `<div onclick="window.reactionChoiceClick()" style="height:220px;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+      <div style="width:130px;height:130px;border-radius:${radius};background:${color};"></div>
+    </div>`;
+  }
+}
+window.reactionChoiceClick = function(){
+  if(!cog || cog.task!=='reaction_choice' || cog.phase!=='stim' || cog.responded) return;
+  cog.responded = true;
+  clearTimeout(cog.timeoutId);
+  const rt = Date.now()-cog.stimulusTime;
+  cog.results.push({type:cog.stimType, responded:true, rt});
+  cog.currentTrial++;
+  nextReactionChoiceTrial();
+};
+function finishReactionChoice(){
+  const results = cog.results;
+  const dificultad = cog.dificultad;
+  const goTrials = results.filter(r=>r.type==='go');
+  const noGoTrials = results.filter(r=>r.type==='nogo');
+  const hits = goTrials.filter(r=>r.responded);
+  const misses = goTrials.filter(r=>!r.responded);
+  const commissions = noGoTrials.filter(r=>r.responded);
+  const correctInhibitions = noGoTrials.filter(r=>!r.responded);
+  const meanRt = hits.length? Math.round(hits.reduce((a,b)=>a+b.rt,0)/hits.length) : null;
+  const scores = {
+    goTotal: goTrials.length, hits: hits.length, misses: misses.length, meanRt,
+    noGoTotal: noGoTrials.length, commissions: commissions.length, correctInhibitions: correctInhibitions.length,
+  };
+  guardarResultadoCognitivo('reaction_choice', dificultad, results, scores);
+}
+function renderReactionChoiceResults(s){
+  const commissionRate = s.noGoTotal? s.commissions/s.noGoTotal : 0;
+  return `<div class="score-grid">
+    ${scoreCardHtml('Aciertos (Go)', s.hits+' / '+s.goTotal, s.goTotal && (s.hits/s.goTotal)>=0.9?'verde':'amarillo')}
+    ${scoreCardHtml('Tiempo medio (Go)', (s.meanRt||'—')+' ms', 'verde')}
+    ${scoreCardHtml('Errores de comisión (No-Go)', s.commissions+' / '+s.noGoTotal, commissionRate<=0.15?'verde':(commissionRate<=0.3?'amarillo':'rojo'))}
+    ${scoreCardHtml('Inhibiciones correctas', s.correctInhibitions+' / '+s.noGoTotal, 'verde')}
+  </div><p class="hint">Los errores de comisión (responder cuando no debía) son el indicador clave de impulsividad/control inhibitorio.</p>`;
+}
+
+/* ---------- 3) Atención sostenida (CPT deportivo) ---------- */
+const CPT_PARAMS = {
+  principiante: {durationSec:75, isi:1300, targetRatio:0.2},
+  intermedio: {durationSec:120, isi:1000, targetRatio:0.18},
+  avanzado: {durationSec:165, isi:800, targetRatio:0.15},
+};
+function viewAtencionSostenida(){
+  if(cog && cog.task==='atencion_sostenida'){
+    return `<div class="panel">
+      <div class="panel-head"><div><div class="eyebrow">Atención sostenida · ${cog.dificultad}</div><h1>En curso</h1></div></div>
+      <div id="cptStage"></div>
+    </div>`;
+  }
+  const result = moduleResults.atencion_sostenida;
+  return `<div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Evaluación cognitiva</div><h1>Atención sostenida (CPT deportivo)</h1></div>
+      <button class="btn-ghost" onclick="window.volverDeTareaCognitiva()">← Volver</button></div>
+    <p class="hint">Van a aparecer números. Hacé clic únicamente cuando veas el número 7.</p>
+    ${result && result.completed ? renderCPTResults(result.scores) : ''}
+    ${renderDifficultySelector('atencion_sostenida')}
+  </div>`;
+}
+window.iniciarAtencionSostenida = function(dificultad){
+  const p = CPT_PARAMS[dificultad];
+  cog = {task:'atencion_sostenida', dificultad, params:p, trials:[], current:null, currentIsTarget:false, responded:false, startTime:Date.now(), stimulusTime:0};
+  activeView='atencion_sostenida'; render();
+  cptTick();
+};
+function cptTick(){
+  if(!cog || cog.task!=='atencion_sostenida') return;
+  const elapsed = (Date.now()-cog.startTime)/1000;
+  if(elapsed>=cog.params.durationSec){ return finishCPT(); }
+  if(cog.current!==null && !cog.responded){
+    cog.trials.push({digit:cog.current, isTarget:cog.currentIsTarget, responded:false, rt:null});
+  }
+  const isTarget = Math.random()<cog.params.targetRatio;
+  let d;
+  if(isTarget){ d = 7; } else { do{ d = Math.floor(Math.random()*10); } while(d===7); }
+  cog.current = d;
+  cog.currentIsTarget = isTarget;
+  cog.responded = false;
+  cog.stimulusTime = Date.now();
+  renderCPTStage();
+  cog.stimTimeoutId = setTimeout(cptTick, cog.params.isi);
+}
+function renderCPTStage(){
+  const el = document.getElementById('cptStage');
+  if(!el) return;
+  const elapsed = Math.round((Date.now()-cog.startTime)/1000);
+  const remaining = Math.max(0, cog.params.durationSec - elapsed);
+  el.innerHTML = `<div class="cancel-toolbar"><div>Objetivo: hacé clic solo con el número <strong>7</strong></div><div class="cancel-timer">${remaining}s</div></div>
+    <div onclick="window.cptClick()" style="height:200px;border-radius:10px;background:#F1F6F9;display:flex;align-items:center;justify-content:center;font-size:64px;font-weight:700;color:var(--primary-dark);cursor:pointer;">${cog.current}</div>`;
+}
+window.cptClick = function(){
+  if(!cog || cog.task!=='atencion_sostenida' || cog.responded) return;
+  cog.responded = true;
+  const rt = Date.now()-cog.stimulusTime;
+  cog.trials.push({digit:cog.current, isTarget:cog.currentIsTarget, responded:true, rt});
+};
+function finishCPT(){
+  clearTimeout(cog.stimTimeoutId);
+  const trials = cog.trials;
+  const dificultad = cog.dificultad;
+  const targets = trials.filter(t=>t.isTarget);
+  const nonTargets = trials.filter(t=>!t.isTarget);
+  const hits = targets.filter(t=>t.responded);
+  const omissions = targets.filter(t=>!t.responded);
+  const falseAlarms = nonTargets.filter(t=>t.responded);
+  const meanRt = hits.length? Math.round(hits.reduce((a,b)=>a+b.rt,0)/hits.length):null;
+  const half = Math.floor(targets.length/2);
+  const firstHalf = targets.slice(0,half);
+  const secondHalf = targets.slice(half);
+  const firstHalfHitRate = firstHalf.length? firstHalf.filter(t=>t.responded).length/firstHalf.length : null;
+  const secondHalfHitRate = secondHalf.length? secondHalf.filter(t=>t.responded).length/secondHalf.length : null;
+  const scores = {
+    targetsTotal: targets.length, hits: hits.length, omissions: omissions.length,
+    falseAlarms: falseAlarms.length, meanRt, firstHalfHitRate, secondHalfHitRate,
+  };
+  guardarResultadoCognitivo('atencion_sostenida', dificultad, trials, scores);
+}
+function renderCPTResults(s){
+  const decline = (s.firstHalfHitRate!==null && s.secondHalfHitRate!==null) ? (s.firstHalfHitRate - s.secondHalfHitRate) : null;
+  return `<div class="score-grid">
+    ${scoreCardHtml('Aciertos', s.hits+' / '+s.targetsTotal, s.targetsTotal && (s.hits/s.targetsTotal)>=0.85?'verde':'amarillo')}
+    ${scoreCardHtml('Omisiones', s.omissions, s.omissions<=2?'verde':(s.omissions<=5?'amarillo':'rojo'))}
+    ${scoreCardHtml('Falsas alarmas', s.falseAlarms, s.falseAlarms<=2?'verde':(s.falseAlarms<=5?'amarillo':'rojo'))}
+    ${scoreCardHtml('Tiempo medio', (s.meanRt||'—')+' ms', 'verde')}
+    ${decline!==null? scoreCardHtml('Caída atencional (1ª vs 2ª mitad)', Math.round(decline*100)+' pts', decline<=0.1?'verde':(decline<=0.25?'amarillo':'rojo')) : ''}
+  </div><p class="hint">La "caída atencional" compara el % de aciertos en la primera mitad de la tarea vs. la segunda. Valores altos indican fatiga atencional progresiva.</p>`;
+}
+
+/* ---------- 4) Memoria de trabajo (n-back) ---------- */
+const NBACK_PARAMS = {
+  principiante: {n:1, trials:20, isi:2200},
+  intermedio: {n:2, trials:24, isi:2000},
+  avanzado: {n:3, trials:28, isi:1800},
+};
+const NBACK_LETTERS = ['A','B','C','D','E','F'];
+function viewMemoriaNback(){
+  if(cog && cog.task==='memoria_nback'){
+    return `<div class="panel">
+      <div class="panel-head"><div><div class="eyebrow">Memoria de trabajo · ${cog.dificultad}</div><h1>${cog.params.n}-back</h1></div></div>
+      <div id="nbackStage"></div>
+    </div>`;
+  }
+  const result = moduleResults.memoria_nback;
+  return `<div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Evaluación cognitiva</div><h1>Memoria de trabajo (n-back)</h1></div>
+      <button class="btn-ghost" onclick="window.volverDeTareaCognitiva()">← Volver</button></div>
+    <p class="hint">Van a aparecer letras una por una. Tocá el botón si la letra actual es igual a la de "n" pasos atrás.</p>
+    ${result && result.completed ? renderNbackResults(result.scores) : ''}
+    ${renderDifficultySelector('memoria_nback')}
+  </div>`;
+}
+window.iniciarMemoriaNback = function(dificultad){
+  const p = NBACK_PARAMS[dificultad];
+  const sequence = [];
+  for(let i=0;i<p.trials;i++){
+    if(i>=p.n && Math.random()<0.35){ sequence.push(sequence[i-p.n]); }
+    else { sequence.push(pick(NBACK_LETTERS)); }
+  }
+  cog = {task:'memoria_nback', dificultad, params:p, sequence, index:0, responded:false, results:[], stimulusTime:0};
+  activeView='memoria_nback'; render();
+  nbackTick();
+};
+function nbackTick(){
+  if(!cog || cog.task!=='memoria_nback') return;
+  if(cog.index>=cog.sequence.length) return finishNback();
+  cog.responded = false;
+  cog.stimulusTime = Date.now();
+  renderNbackStage();
+  cog.timeoutId = setTimeout(()=>{
+    if(!cog || cog.task!=='memoria_nback') return;
+    const isMatch = cog.index>=cog.params.n && cog.sequence[cog.index]===cog.sequence[cog.index-cog.params.n];
+    cog.results.push({letter:cog.sequence[cog.index], isMatch, responded:cog.responded, rt: cog.responded? (Date.now()-cog.stimulusTime): null});
+    cog.index++;
+    nbackTick();
+  }, cog.params.isi);
+}
+function renderNbackStage(){
+  const el = document.getElementById('nbackStage');
+  if(!el) return;
+  el.innerHTML = `<div style="height:180px;border-radius:10px;background:#F1F6F9;display:flex;align-items:center;justify-content:center;font-size:64px;font-weight:700;color:var(--primary-dark);">${cog.sequence[cog.index]}</div>
+    <div class="btn-row"><button class="btn-primary" onclick="window.nbackRespond()">Coincide con ${cog.params.n} atrás</button></div>
+    <p class="hint">Ítem ${cog.index+1} de ${cog.sequence.length}</p>`;
+}
+window.nbackRespond = function(){
+  if(!cog || cog.task!=='memoria_nback' || cog.responded) return;
+  cog.responded = true;
+};
+function finishNback(){
+  const results = cog.results;
+  const dificultad = cog.dificultad;
+  const n = cog.params.n;
+  const matches = results.filter(r=>r.isMatch);
+  const nonMatches = results.filter(r=>!r.isMatch);
+  const hits = matches.filter(r=>r.responded);
+  const misses = matches.filter(r=>!r.responded);
+  const falseAlarms = nonMatches.filter(r=>r.responded);
+  const correctRejections = nonMatches.filter(r=>!r.responded);
+  const scores = {
+    n, matchesTotal: matches.length, hits: hits.length, misses: misses.length,
+    falseAlarms: falseAlarms.length, correctRejections: correctRejections.length,
+    precision: matches.length? Math.round((hits.length/matches.length)*100):0,
+  };
+  guardarResultadoCognitivo('memoria_nback', dificultad, results, scores);
+}
+function renderNbackResults(s){
+  return `<div class="score-grid">
+    ${scoreCardHtml('Nivel (n-back)', s.n, 'verde')}
+    ${scoreCardHtml('Aciertos', s.hits+' / '+s.matchesTotal, s.precision>=80?'verde':(s.precision>=60?'amarillo':'rojo'))}
+    ${scoreCardHtml('Precisión', s.precision+'%', s.precision>=80?'verde':(s.precision>=60?'amarillo':'rojo'))}
+    ${scoreCardHtml('Falsas alarmas', s.falseAlarms, s.falseAlarms<=2?'verde':(s.falseAlarms<=5?'amarillo':'rojo'))}
+    ${scoreCardHtml('Rechazos correctos', s.correctRejections, 'verde')}
+  </div><p class="hint">Precisión ≥80% adecuada · 60-79% moderada · &lt;60% baja para el nivel aplicado.</p>`;
+}
+
+/* ---------- Interpretación cruzada de la Tanda 4 ---------- */
+function buildInterpretacionCognitiva(){
+  const rs = moduleResults.reaction_simple.scores;
+  const rc = moduleResults.reaction_choice.scores;
+  const cpt = moduleResults.atencion_sostenida.scores;
+  const nb = moduleResults.memoria_nback.scores;
+  const lines = [];
+
+  if(rs.sd>100) lines.push('El tiempo de reacción simple muestra alta variabilidad (SD elevada), lo que sugiere inconsistencia en la respuesta más que lentitud generalizada.');
+  const commissionRate = rc.noGoTotal? rc.commissions/rc.noGoTotal : 0;
+  if(commissionRate>0.3) lines.push('La tarea Go/No-Go muestra una tasa alta de errores de comisión (responder cuando no debía), un indicador conductual de impulsividad.');
+  if(cpt.omissions>5 || (cpt.firstHalfHitRate!==null && cpt.secondHalfHitRate!==null && (cpt.firstHalfHitRate-cpt.secondHalfHitRate)>0.25)){
+    lines.push('La atención sostenida muestra una caída relevante en la segunda mitad de la tarea, compatible con fatiga atencional progresiva.');
+  }
+  if(nb.precision<60) lines.push(`La memoria de trabajo (${nb.n}-back) muestra una precisión baja para el nivel aplicado.`);
+
+  // Cruce con tandas anteriores
+  if(moduleResults.mood && moduleResults.mood.completed){
+    const mood = moduleResults.mood.scores;
+    if(cpt.omissions>5 && mood.fatiga>=3) lines.push('Las omisiones en la atención sostenida son consistentes con la fatiga reportada en el estado de ánimo — vale la pena considerar el estado de recuperación física antes de sacar conclusiones puramente cognitivas.');
+  }
+  if(moduleResults.csai2 && moduleResults.csai2.completed){
+    const csai = moduleResults.csai2.scores;
+    if(commissionRate>0.3 && csai.somatica>=3) lines.push('La impulsividad conductual (comisiones en Go/No-Go) junto con la activación somática elevada del CSAI-2R sugiere que la ansiedad podría estar afectando el control inhibitorio, no solo el estado emocional.');
+  }
+  if(moduleResults.pss14 && moduleResults.pss14.completed){
+    const pss = moduleResults.pss14.scores;
+    if(rs.sd>100 && pss.total>=27) lines.push('La inconsistencia en el tiempo de reacción simple es consistente con el alto estrés percibido general (PSS-14), que suele afectar la estabilidad del rendimiento cognitivo.');
+  }
+
+  let sintesis;
+  const riesgos = [rs.sd>100, commissionRate>0.3, cpt.omissions>5, nb.precision<60].filter(Boolean).length;
+  if(riesgos===0){
+    sintesis = 'El perfil cognitivo evaluado es adecuado en las 4 tareas. Se recomienda mantener el nivel de dificultad actual o subirlo en la próxima evaluación para seguir desafiando estas capacidades.';
+  } else if(riesgos<=2){
+    sintesis = 'Hay 1-2 áreas cognitivas a reforzar. Se sugiere trabajo específico (ver biblioteca de técnicas de atención/concentración) y reevaluar con el mismo nivel de dificultad en unas semanas para medir progreso.';
+  } else {
+    sintesis = 'Múltiples áreas cognitivas muestran dificultad concurrente. Antes de intervenir cognitivamente, vale la pena revisar factores de base (fatiga, sueño, estrés) que podrían estar afectando transversalmente el rendimiento en todas las tareas.';
   }
 
   return lines.map(l=>`<p>${l}</p>`).join('') + `<p><strong>${sintesis}</strong></p>`;
