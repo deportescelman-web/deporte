@@ -105,8 +105,8 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
    CONFIGURACIÓN — reemplazá estos dos valores con los de TU
    proyecto de Supabase (Project Settings → API).
    ============================================================ */
-const SUPABASE_URL = 'https://oteeceupgmcvstpmgtwl.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im90ZWVjZXVwZ21jdnN0cG1ndHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1OTcwNjAsImV4cCI6MjA5OTE3MzA2MH0.jaMCi0O7RGdIfVKCHXRU6OhR3DamSUwuRKTURaZtSos';
+const SUPABASE_URL = 'PEGA_AQUI_TU_SUPABASE_URL';
+const SUPABASE_ANON_KEY = 'PEGA_AQUI_TU_SUPABASE_ANON_KEY';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -546,7 +546,106 @@ const AUTOEFI_ITEMS = [
 ];
 
 
+const SCALE_0_4_INTENSIDAD = ["Nada","Un poco","Moderadamente","Bastante","Muchísimo"];
+const SCALE_1_5_FLOW = ["1 · Muy en desacuerdo","2","3","4","5 · Muy de acuerdo"];
+const SCALE_1_9_ACUERDO = ["1 · Totalmente en desacuerdo","2","3","4","5","6","7","8","9 · Totalmente de acuerdo"];
+
+// Estado de ánimo pre-competitivo (escala propia, no reproduce el POMS comercial)
+const MOOD_ITEMS = [
+  {t:"Me siento nervioso/a", sub:'tension'},
+  {t:"Estoy tenso/a", sub:'tension'},
+  {t:"Me siento inquieto/a", sub:'tension'},
+  {t:"Estoy en alerta excesiva", sub:'tension'},
+  {t:"Me siento con energía", sub:'vigor'},
+  {t:"Me siento activo/a", sub:'vigor'},
+  {t:"Me siento lleno/a de vitalidad", sub:'vigor'},
+  {t:"Me siento fuerte", sub:'vigor'},
+  {t:"Me siento agotado/a", sub:'fatiga'},
+  {t:"Me siento sin energía", sub:'fatiga'},
+  {t:"Me siento cansado/a", sub:'fatiga'},
+  {t:"Me cuesta mantenerme despierto/a", sub:'fatiga'},
+  {t:"Me siento irritable", sub:'irritabilidad'},
+  {t:"Estoy de mal humor", sub:'irritabilidad'},
+  {t:"Me enojo con facilidad", sub:'irritabilidad'},
+  {t:"Me siento molesto/a por pequeñas cosas", sub:'irritabilidad'},
+  {t:"Me siento confundido/a", sub:'confusion'},
+  {t:"Me cuesta poner en orden mis pensamientos", sub:'confusion'},
+  {t:"Me siento desorientado/a", sub:'confusion'},
+  {t:"Tengo dificultad para pensar con claridad", sub:'confusion'},
+  {t:"Me siento alegre", sub:'animo'},
+  {t:"Me siento optimista", sub:'animo'},
+  {t:"Me siento satisfecho/a", sub:'animo'},
+  {t:"Me siento tranquilo/a", sub:'animo'},
+];
+
+// FSS-2 (Flow State Scale-2, Jackson & Eklund) — referido a la última competencia/entrenamiento relevante
+const FSS2_ITEMS = [
+  {t:"Sentí que mis habilidades estaban a la altura del desafío", sub:'equilibrio'},
+  {t:"Sentí que era lo suficientemente bueno/a para enfrentar las exigencias de la situación", sub:'equilibrio'},
+  {t:"Sentí que podía cumplir con las exigencias de la situación", sub:'equilibrio'},
+  {t:"Mi nivel de habilidad estuvo a la par de lo exigente que fue el desafío", sub:'equilibrio'},
+  {t:"Hice los movimientos automáticamente, sin tener que pensarlos", sub:'fusion'},
+  {t:"Actué sin pensar conscientemente en cómo hacerlo", sub:'fusion'},
+  {t:"Las cosas parecían suceder automáticamente", sub:'fusion'},
+  {t:"Realicé la actividad sin esfuerzo consciente", sub:'fusion'},
+  {t:"Supe con claridad lo que quería hacer", sub:'objetivos'},
+  {t:"Tuve un fuerte sentido de lo que quería hacer", sub:'objetivos'},
+  {t:"Supe claramente qué quería lograr", sub:'objetivos'},
+  {t:"Mis metas estaban claramente definidas", sub:'objetivos'},
+  {t:"Tuve una buena idea, mientras competía, de si lo estaba haciendo bien", sub:'feedback'},
+  {t:"Fue claro para mí cómo estaba rindiendo", sub:'feedback'},
+  {t:"Pude notar, por cómo me sentía, si las cosas iban bien", sub:'feedback'},
+  {t:"Fue claro para mí que estaba haciendo bien las cosas", sub:'feedback'},
+  {t:"Mi atención estuvo completamente enfocada en lo que estaba haciendo", sub:'concentracion'},
+  {t:"Tuve concentración total", sub:'concentracion'},
+  {t:"Estuve completamente concentrado/a en la tarea", sub:'concentracion'},
+  {t:"No tuve dificultad para concentrarme", sub:'concentracion'},
+  {t:"Sentí que tenía control total sobre lo que estaba haciendo", sub:'control'},
+  {t:"Sentí que tenía el control de mi cuerpo", sub:'control'},
+  {t:"Sentí una fuerte sensación de control", sub:'control'},
+  {t:"No tuve preocupación por perder el control", sub:'control'},
+  {t:"No me preocupó lo que otros pudieran pensar de mí", sub:'autoconciencia'},
+  {t:"No me preocupé por mi actuación durante el evento", sub:'autoconciencia'},
+  {t:"No pensé en cómo me estaba viendo", sub:'autoconciencia'},
+  {t:"Perdí la conciencia habitual de mí mismo/a", sub:'autoconciencia'},
+  {t:"Sentí que el tiempo pasaba distinto de lo habitual", sub:'tiempo'},
+  {t:"El tiempo pareció acelerarse o ralentizarse", sub:'tiempo'},
+  {t:"Sentí que el tiempo pasó de forma diferente a lo normal", sub:'tiempo'},
+  {t:"No fui consciente de cuánto tiempo pasó", sub:'tiempo'},
+  {t:"Disfruté mucho la experiencia", sub:'autotelica'},
+  {t:"Sentí que valió la pena hacerlo, sin importar el resultado", sub:'autotelica'},
+  {t:"Encontré la experiencia sumamente gratificante", sub:'autotelica'},
+  {t:"Amé la sensación de rendir así y quiero volver a sentirla", sub:'autotelica'},
+];
+
+// GEQ — Cuestionario de Cohesión de Equipo (adaptado; solo deportes colectivos)
+const GEQ_ITEMS = [
+  {t:"Estoy satisfecho/a con el nivel de desempeño del equipo", sub:'atg_tarea'},
+  {t:"Este equipo me da la oportunidad de mejorar mi rendimiento", sub:'atg_tarea'},
+  {t:"Me gusta el estilo de juego de este equipo", sub:'atg_tarea'},
+  {t:"Estoy conforme con el rol que tengo dentro del equipo", sub:'atg_tarea'},
+  {t:"Algunos de mis mejores amigos/as están en este equipo", sub:'atg_social'},
+  {t:"Disfruto más estar con este equipo que con otros grupos sociales", sub:'atg_social'},
+  {t:"Para mí, este equipo es uno de los grupos sociales más importantes a los que pertenezco", sub:'atg_social'},
+  {t:"Paso tiempo con mis compañeros/as fuera de entrenamientos y competencias", sub:'atg_social'},
+  {t:"Nuestro equipo está unido en torno a los objetivos de rendimiento", sub:'gi_tarea'},
+  {t:"Los miembros de nuestro equipo comparten la responsabilidad ante las derrotas o el mal rendimiento", sub:'gi_tarea'},
+  {t:"Nuestro equipo quiere entrenar junto incluso fuera de los horarios establecidos", sub:'gi_tarea'},
+  {t:"Los miembros de nuestro equipo tienen metas de rendimiento en común", sub:'gi_tarea'},
+  {t:"Los miembros de nuestro equipo suelen socializar juntos fuera del deporte", sub:'gi_social'},
+  {t:"Nuestro equipo se reúne para actividades sociales además de las obligatorias", sub:'gi_social'},
+  {t:"Los miembros de nuestro equipo se llevan bien entre sí", sub:'gi_social'},
+  {t:"Nuestro equipo pasa tiempo junto fuera de los entrenamientos", sub:'gi_social'},
+];
+
+
 const INSTRUMENTS = {
+  mood: {label:"Estado de ánimo pre-competitivo", items:MOOD_ITEMS, scale:SCALE_0_4_INTENSIDAD, base:0,
+    desc:"Tensión, vigor, fatiga, irritabilidad, confusión y ánimo general. Ideal aplicarlo cerca de un entrenamiento o competencia reciente."},
+  fss2: {label:"FSS-2 — Estado de flow", items:FSS2_ITEMS, scale:SCALE_1_5_FLOW, base:1,
+    desc:"Los 9 componentes del estado de flujo (Jackson & Eklund). Referido a la última competencia o entrenamiento relevante."},
+  geq: {label:"GEQ — Cohesión de equipo (solo deportes colectivos)", items:GEQ_ITEMS, scale:SCALE_1_9_ACUERDO, base:1,
+    desc:"Atracción individual y unión grupal, en las dimensiones de tarea y social (adaptado de Carron, Widmeyer & Brawley)."},
   sms28: {label:"SMS-28 — Motivación deportiva", items:SMS28_ITEMS, scale:SCALE_1_7_VERDAD, base:1,
     desc:"Motivación intrínseca (conocer, logro, estimulación), extrínseca (identificada, introyectada, externa) y amotivación. Estem: \"Practico mi deporte porque...\""},
   teosq: {label:"TEOSQ — Orientación a meta", items:TEOSQ_ITEMS, scale:SCALE_1_5_ACUERDO, base:1,
@@ -581,6 +680,12 @@ window.abrirEvaluacion = async function(id){
 const GRUPO_ANSIEDAD = ['csai2','sas2','pss14','abq'];
 const GRUPO_MOTIVACION = ['sms28','teosq','autoeficacia'];
 
+function grupoEstado(){
+  const base = ['mood','fss2'];
+  if(currentAthlete && currentAthlete.modalidad === 'colectivo') base.push('geq');
+  return base;
+}
+
 function moduleCardsHtml(keys){
   return keys.map(key=>{
     const inst = INSTRUMENTS[key];
@@ -601,6 +706,8 @@ function viewEvaluacion(){
 
   const ansiedadDone = GRUPO_ANSIEDAD.every(k=> moduleResults[k] && moduleResults[k].completed);
   const motivacionDone = GRUPO_MOTIVACION.every(k=> moduleResults[k] && moduleResults[k].completed);
+  const grupoEstadoKeys = grupoEstado();
+  const estadoDone = grupoEstadoKeys.every(k=> moduleResults[k] && moduleResults[k].completed);
 
   return `<div class="panel">
     <div class="panel-head"><div><div class="eyebrow">${esc(currentAthlete.nombre)}</div><h1>Evaluación del ${esc(e.fecha_evaluacion)}</h1></div>
@@ -619,6 +726,13 @@ function viewEvaluacion(){
     <div class="panel-head"><div><div class="eyebrow">Tanda 2</div><h1>Motivación</h1></div></div>
     ${moduleCardsHtml(GRUPO_MOTIVACION)}
     ${motivacionDone ? `<div class="interpretation-box">${buildInterpretacionMotivacion()}</div>` : `<p class="hint">La interpretación integrada aparece al completar los 3 instrumentos.</p>`}
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Tanda 3</div><h1>Estado de ánimo, Flow y Cohesión</h1></div></div>
+    ${currentAthlete.modalidad!=='colectivo' ? `<p class="hint">Este deportista está registrado como modalidad individual, por eso el GEQ (cohesión de equipo) no se muestra — no aplica.</p>`:''}
+    ${moduleCardsHtml(grupoEstadoKeys)}
+    ${estadoDone ? `<div class="interpretation-box">${buildInterpretacionEstado()}</div>` : `<p class="hint">La interpretación integrada aparece al completar ${grupoEstadoKeys.length} instrumento(s).</p>`}
   </div>
   `;
 }
@@ -714,6 +828,35 @@ function scoreAutoeficacia(answers){
   s.global = (s.previa + s.presion + s.error + s.cierre) / 4;
   return s;
 }
+function scoreMood(answers){
+  const bySub = {tension:[], vigor:[], fatiga:[], irritabilidad:[], confusion:[], animo:[]};
+  MOOD_ITEMS.forEach((it,i)=> bySub[it.sub].push(answers[i]));
+  const avg = arr => arr.reduce((a,b)=>a+b,0)/arr.length;
+  const s = {
+    tension: avg(bySub.tension), vigor: avg(bySub.vigor), fatiga: avg(bySub.fatiga),
+    irritabilidad: avg(bySub.irritabilidad), confusion: avg(bySub.confusion), animo: avg(bySub.animo),
+  };
+  // Perturbación anímica total, inspirado en el TMD del POMS: negativas - positivas
+  s.perturbacionTotal = (s.tension + s.fatiga + s.irritabilidad + s.confusion) - (s.vigor + s.animo);
+  return s;
+}
+function scoreFSS2(answers){
+  const bySub = {equilibrio:[], fusion:[], objetivos:[], feedback:[], concentracion:[], control:[], autoconciencia:[], tiempo:[], autotelica:[]};
+  FSS2_ITEMS.forEach((it,i)=> bySub[it.sub].push(answers[i]));
+  const avg = arr => arr.reduce((a,b)=>a+b,0)/arr.length;
+  const s = {};
+  Object.keys(bySub).forEach(k=> s[k]=avg(bySub[k]));
+  s.global = Object.keys(bySub).reduce((acc,k)=>acc+s[k],0) / Object.keys(bySub).length;
+  return s;
+}
+function scoreGEQ(answers){
+  const bySub = {atg_tarea:[], atg_social:[], gi_tarea:[], gi_social:[]};
+  GEQ_ITEMS.forEach((it,i)=> bySub[it.sub].push(answers[i]));
+  const avg = arr => arr.reduce((a,b)=>a+b,0)/arr.length;
+  const s = { atg_tarea: avg(bySub.atg_tarea), atg_social: avg(bySub.atg_social), gi_tarea: avg(bySub.gi_tarea), gi_social: avg(bySub.gi_social) };
+  s.global = (s.atg_tarea + s.atg_social + s.gi_tarea + s.gi_social) / 4;
+  return s;
+}
 
 window.guardarInstrumento = async function(key){
   const inst = INSTRUMENTS[key];
@@ -733,6 +876,9 @@ window.guardarInstrumento = async function(key){
   else if(key==='sms28') scores = scoreSMS28(answers);
   else if(key==='teosq') scores = scoreTEOSQ(answers);
   else if(key==='autoeficacia') scores = scoreAutoeficacia(answers);
+  else if(key==='mood') scores = scoreMood(answers);
+  else if(key==='fss2') scores = scoreFSS2(answers);
+  else if(key==='geq') scores = scoreGEQ(answers);
 
   const payload = {
     evaluation_id: currentEvaluationId,
@@ -759,6 +905,7 @@ function levelPSS(total){ if(total>=27) return 'rojo'; if(total>=14) return 'ama
 function levelABQ(avg){ if(avg>=3.5) return 'rojo'; if(avg>=2.5) return 'amarillo'; return 'verde'; }
 
 function renderInstrumentoResultado(key, s){
+  if(['mood','fss2','geq'].includes(key)) return renderInstrumentoResultadoExtra(key, s);
   if(key==='csai2'){
     return `<div class="score-grid">
       ${scoreCardHtml('Ansiedad cognitiva', s.cognitiva.toFixed(2)+' / 4', levelAvg4(s.cognitiva))}
@@ -816,6 +963,40 @@ function renderInstrumentoResultado(key, s){
   }
 }
 function levelAutoefi(avg){ if(avg>=4) return 'verde'; if(avg>=2.5) return 'amarillo'; return 'rojo'; }
+function levelMoodNeg(avg){ if(avg>=3) return 'rojo'; if(avg>=1.5) return 'amarillo'; return 'verde'; }
+function levelMoodPos(avg){ if(avg>=3) return 'verde'; if(avg>=1.5) return 'amarillo'; return 'rojo'; }
+function levelFlow(avg){ if(avg>=4) return 'verde'; if(avg>=3) return 'amarillo'; return 'rojo'; }
+function levelGEQ(avg){ if(avg>=7) return 'verde'; if(avg>=4) return 'amarillo'; return 'rojo'; }
+
+function renderInstrumentoResultadoExtra(key, s){
+  if(key==='mood'){
+    return `<div class="score-grid">
+      ${scoreCardHtml('Tensión', s.tension.toFixed(2)+' / 4', levelMoodNeg(s.tension))}
+      ${scoreCardHtml('Vigor', s.vigor.toFixed(2)+' / 4', levelMoodPos(s.vigor))}
+      ${scoreCardHtml('Fatiga', s.fatiga.toFixed(2)+' / 4', levelMoodNeg(s.fatiga))}
+      ${scoreCardHtml('Irritabilidad', s.irritabilidad.toFixed(2)+' / 4', levelMoodNeg(s.irritabilidad))}
+      ${scoreCardHtml('Confusión', s.confusion.toFixed(2)+' / 4', levelMoodNeg(s.confusion))}
+      ${scoreCardHtml('Ánimo general', s.animo.toFixed(2)+' / 4', levelMoodPos(s.animo))}
+      ${scoreCardHtml('Perturbación anímica total', s.perturbacionTotal.toFixed(2), s.perturbacionTotal>=4?'rojo':(s.perturbacionTotal>=0?'amarillo':'verde'))}
+    </div><p class="hint">Escalas 0-4. La perturbación total resume el balance negativo-positivo (inspirado en el TMD del POMS, sin reproducirlo): valores altos = más perturbación anímica.</p>`;
+  }
+  if(key==='fss2'){
+    const labels = {equilibrio:'Equilibrio reto-habilidad', fusion:'Fusión acción-conciencia', objetivos:'Claridad de objetivos', feedback:'Feedback claro', concentracion:'Concentración en la tarea', control:'Sensación de control', autoconciencia:'Pérdida de autoconciencia', tiempo:'Transformación del tiempo', autotelica:'Experiencia autotélica'};
+    const cards = Object.keys(labels).map(k=> scoreCardHtml(labels[k], s[k].toFixed(2)+' / 5', levelFlow(s[k]))).join('');
+    return `<div class="score-grid">${cards}${scoreCardHtml('Flow global', s.global.toFixed(2)+' / 5', levelFlow(s.global))}</div>
+    <p class="hint">≥4 alto · 3-3.99 moderado · &lt;3 bajo, por componente.</p>`;
+  }
+  if(key==='geq'){
+    return `<div class="score-grid">
+      ${scoreCardHtml('Atracción individual · Tarea', s.atg_tarea.toFixed(2)+' / 9', levelGEQ(s.atg_tarea))}
+      ${scoreCardHtml('Atracción individual · Social', s.atg_social.toFixed(2)+' / 9', levelGEQ(s.atg_social))}
+      ${scoreCardHtml('Integración grupal · Tarea', s.gi_tarea.toFixed(2)+' / 9', levelGEQ(s.gi_tarea))}
+      ${scoreCardHtml('Integración grupal · Social', s.gi_social.toFixed(2)+' / 9', levelGEQ(s.gi_social))}
+      ${scoreCardHtml('Cohesión global', s.global.toFixed(2)+' / 9', levelGEQ(s.global))}
+    </div><p class="hint">≥7 alta · 4-6.99 moderada · &lt;4 baja.</p>`;
+  }
+}
+
 
 function buildInterpretacionAnsiedadEstres(){
   const csai = moduleResults.csai2.scores;
@@ -887,6 +1068,52 @@ function buildInterpretacionMotivacion(){
     sintesis = 'El perfil motivacional muestra algunos puntos a trabajar. Se sugiere reforzar la orientación a la tarea (metas de proceso y mejora personal) y trabajar autoeficacia específica en los momentos más débiles identificados.';
   } else {
     sintesis = 'El perfil motivacional muestra múltiples indicadores de riesgo (amotivación, motivación controlada, orientación al ego dominante y/o baja autoeficacia). Se recomienda una intervención motivacional activa, en coordinación con el entrenador, revisando también la carga competitiva y el estilo de retroalimentación que recibe el/la deportista.';
+  }
+
+  return lines.map(l=>`<p>${l}</p>`).join('') + `<p><strong>${sintesis}</strong></p>`;
+}
+
+function buildInterpretacionEstado(){
+  const mood = moduleResults.mood.scores;
+  const fss = moduleResults.fss2.scores;
+  const geq = moduleResults.geq ? moduleResults.geq.scores : null;
+  const lines = [];
+
+  if(mood.perturbacionTotal>=4) lines.push('El estado de ánimo muestra una perturbación anímica elevada (predominio de tensión, fatiga, irritabilidad y/o confusión sobre el vigor y el ánimo positivo).');
+  if(mood.fatiga>=3) lines.push('La fatiga reportada es alta, lo cual es relevante para decisiones de carga de entrenamiento y recuperación.');
+  if(mood.vigor<1.5) lines.push('El vigor es bajo, lo que puede reflejar sobrecarga física, falta de descanso, o desgaste motivacional.');
+
+  if(fss.global<3) lines.push('El estado de flow global es bajo: el/la deportista no está experimentando con frecuencia ese estado de absorción óptima durante la competencia o el entrenamiento.');
+  if(fss.control<3 && fss.autoconciencia<3) lines.push('La baja sensación de control junto con alta autoconciencia (preocupación por cómo lo/la ven) sugiere que la atención se está dirigiendo hacia el juicio externo en vez de hacia la tarea.');
+  if(fss.equilibrio<3) lines.push('El equilibrio reto-habilidad es bajo, lo que puede indicar que la exigencia percibida no está ajustada a su nivel actual de habilidad (demasiado difícil o demasiado fácil).');
+
+  if(geq){
+    if(geq.global<4) lines.push('La cohesión de equipo percibida es baja, tanto a nivel de tarea como social, lo cual puede estar afectando el compromiso y el rendimiento colectivo.');
+    else if(geq.global>=7) lines.push('La cohesión de equipo percibida es alta, un factor protector relevante para el bienestar y el rendimiento colectivo.');
+  }
+
+  // Cruce con tandas anteriores
+  if(moduleResults.abq && moduleResults.abq.completed){
+    const abq = moduleResults.abq.scores;
+    if(mood.fatiga>=3 && abq.agotamiento>=3.5) lines.push('La fatiga del estado de ánimo es consistente con el agotamiento ya detectado en el ABQ, reforzando la necesidad de revisar la carga de entrenamiento y competencia.');
+  }
+  if(moduleResults.csai2 && moduleResults.csai2.completed){
+    const csai = moduleResults.csai2.scores;
+    if(fss.global<3 && csai.cognitiva>=3) lines.push('El bajo flow es consistente con la ansiedad cognitiva elevada del CSAI-2R: la preocupación excesiva suele desplazar la atención de la tarea y dificultar el ingreso al estado de flujo.');
+  }
+  if(geq && moduleResults.sms28 && moduleResults.sms28.completed){
+    const sms = moduleResults.sms28.scores;
+    if(geq.global<4 && sms.amotivacion>=4) lines.push('La baja cohesión de equipo podría estar contribuyendo a la amotivación detectada en el SMS-28 — vale la pena explorar el clima grupal como factor asociado.');
+  }
+
+  let sintesis;
+  const riesgos = [mood.perturbacionTotal>=4, fss.global<3, geq && geq.global<4].filter(Boolean).length;
+  if(riesgos===0){
+    sintesis = 'El perfil de estado de ánimo, flow y (si corresponde) cohesión grupal es favorable. Se recomienda mantener las rutinas actuales y continuar el seguimiento periódico.';
+  } else if(riesgos===1){
+    sintesis = 'Hay un punto a monitorear en este bloque. Se sugiere reevaluar en la siguiente ventana de seguimiento y trabajar específicamente el área señalada.';
+  } else {
+    sintesis = 'Hay múltiples indicadores concurrentes en este bloque (ánimo, flow y/o cohesión). Se recomienda priorizar este frente en la intervención psicológica y coordinar con el cuerpo técnico ajustes de carga, clima de equipo o ambos.';
   }
 
   return lines.map(l=>`<p>${l}</p>`).join('') + `<p><strong>${sintesis}</strong></p>`;
