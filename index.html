@@ -105,8 +105,8 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
    CONFIGURACIÓN — reemplazá estos dos valores con los de TU
    proyecto de Supabase (Project Settings → API).
    ============================================================ */
-const SUPABASE_URL = 'PEGA_AQUI_TU_SUPABASE_URL';
-const SUPABASE_ANON_KEY = 'PEGA_AQUI_TU_SUPABASE_ANON_KEY';
+const SUPABASE_URL = 'https://oteeceupgmcvstpmgtwl.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im90ZWVjZXVwZ21jdnN0cG1ndHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1OTcwNjAsImV4cCI6MjA5OTE3MzA2MH0.jaMCi0O7RGdIfVKCHXRU6OhR3DamSUwuRKTURaZtSos';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -127,9 +127,24 @@ function esc(s){ return (s===null||s===undefined?'':s.toString()).replace(/&/g,'
    AUTENTICACIÓN
    ============================================================ */
 async function init(){
-  const { data } = await supabase.auth.getSession();
-  session = data.session;
-  supabase.auth.onAuthStateChange((_event, s)=>{ session = s; render(); });
+  if(SUPABASE_URL.includes('PEGA_AQUI') || SUPABASE_ANON_KEY.includes('PEGA_AQUI')){
+    root.innerHTML = `<div class="login-wrap"><div class="login-box">
+      <div class="brand-title">BPI</div>
+      <div class="error-box">Todavía no configuraste las credenciales de Supabase en este archivo. Buscá las líneas SUPABASE_URL y SUPABASE_ANON_KEY cerca del inicio del &lt;script&gt; y reemplazalas por las de tu proyecto (Settings → API Keys en Supabase).</div>
+    </div></div>`;
+    return;
+  }
+  try{
+    const { data } = await supabase.auth.getSession();
+    session = data.session;
+    supabase.auth.onAuthStateChange((_event, s)=>{ session = s; render(); });
+  } catch(err){
+    root.innerHTML = `<div class="login-wrap"><div class="login-box">
+      <div class="brand-title">BPI</div>
+      <div class="error-box">No se pudo conectar con Supabase. Revisá que el SUPABASE_URL y la clave estén bien copiados (sin espacios ni comillas de más).<br><br>Detalle técnico: ${(err && err.message)||err}</div>
+    </div></div>`;
+    return;
+  }
   render();
 }
 
@@ -1122,7 +1137,9 @@ function buildInterpretacionEstado(){
 /* ============================================================
    INIT
    ============================================================ */
-init().then(async ()=>{ if(session){ await loadAthletes(); render(); } });
+init().then(async ()=>{ if(session){ await loadAthletes(); render(); } }).catch(err=>{
+  root.innerHTML = `<div class="login-wrap"><div class="login-box"><div class="error-box">Error inesperado al iniciar: ${(err&&err.message)||err}</div></div></div>`;
+});
 </script>
 </body>
 </html>
