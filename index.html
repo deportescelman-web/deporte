@@ -136,12 +136,18 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
    CONFIGURACIÓN — reemplazá estos dos valores con los de TU
    proyecto de Supabase (Project Settings → API).
    ============================================================ */
-const SUPABASE_URL = 'ttps://oteeceupgmcvstpmgtwl.supabase.co';
+const SUPABASE_URL = 'https://oteeceupgmcvstpmgtwl.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im90ZWVjZXVwZ21jdnN0cG1ndHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1OTcwNjAsImV4cCI6MjA5OTE3MzA2MH0.jaMCi0O7RGdIfVKCHXRU6OhR3DamSUwuRKTURaZtSos';
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
 const root = document.getElementById('root');
+let supabase;
+let clientInitError = null;
+try{
+  supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+} catch(err){
+  clientInitError = err;
+}
+
 let session = null;
 let activeView = 'lista';
 let athletes = [];
@@ -161,6 +167,13 @@ function esc(s){ return (s===null||s===undefined?'':s.toString()).replace(/&/g,'
    AUTENTICACIÓN
    ============================================================ */
 async function init(){
+  if(clientInitError){
+    root.innerHTML = `<div class="login-wrap"><div class="login-box">
+      <div class="brand-title">BPI</div>
+      <div class="error-box">El SUPABASE_URL tiene un formato inválido (probablemente falta "https://" al principio, o tiene espacios/comillas de más).<br><br>Detalle técnico: ${esc((clientInitError && clientInitError.message)||String(clientInitError))}</div>
+    </div></div>`;
+    return;
+  }
   if(SUPABASE_URL.includes('PEGA_AQUI') || SUPABASE_ANON_KEY.includes('PEGA_AQUI')){
     root.innerHTML = `<div class="login-wrap"><div class="login-box">
       <div class="brand-title">BPI</div>
