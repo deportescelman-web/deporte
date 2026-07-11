@@ -167,6 +167,7 @@ let moduleResults = {}; // { module_key: {raw_data, scores, completed} }
 let cog = null; // estado transitorio de la tarea cognitiva interactiva en curso
 let tec = null; // estado transitorio de la técnica de entrenamiento mental en curso
 let techniqueLogs = []; // historial de práctica de técnicas del deportista actual
+let wellnessCheckins = []; // historial de check-ins de bienestar del deportista actual
 
 function esc(s){ return (s===null||s===undefined?'':s.toString()).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
@@ -264,6 +265,7 @@ function render(){
   else if(activeView==='atencion_sostenida') bodyHtml = viewAtencionSostenida();
   else if(activeView==='memoria_nback') bodyHtml = viewMemoriaNback();
   else if(activeView==='tecnicas') bodyHtml = viewTecnicas();
+  else if(activeView==='monitoreo') bodyHtml = viewMonitoreo();
   else if(TECHNIQUES[activeView]) bodyHtml = viewTecnicaDetalle(activeView);
   else if(activeView==='informe') bodyHtml = viewInforme();
 
@@ -433,7 +435,10 @@ function viewFicha(){
     </div>
     ${a.motivo_evaluacion? `<p><strong>Motivo de evaluación:</strong> ${esc(a.motivo_evaluacion)}</p>`:''}
     ${a.lesiones? `<p><strong>Lesiones relevantes:</strong> ${esc(a.lesiones)}</p>`:''}
-    <div class="btn-row"><button class="btn-primary" onclick="window.abrirTecnicas()">🧠 Plan de entrenamiento mental</button></div>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="window.abrirTecnicas()">🧠 Plan de entrenamiento mental</button>
+      <button class="btn-primary" onclick="window.abrirMonitoreo()">📋 Monitoreo diario</button>
+    </div>
   </div>
 
   <div class="panel">
@@ -1740,6 +1745,154 @@ function historialHtml(key){
   const rows = logs.slice(0,8).map(l=>`<div class="tec-history-item">${new Date(l.created_at).toLocaleString('es-BO')} ${l.notes? '— '+esc(l.notes):''}</div>`).join('');
   return `<div class="tec-history"><strong style="font-size:12.5px;color:var(--gray);">Historial de práctica</strong>${rows}</div>`;
 }
+
+/* ============================================================
+   MONITOREO DIARIO DE BIENESTAR
+   (fatiga, sueño, estrés, ansiedad, nutrición, hidratación, carga)
+   ============================================================ */
+const WELLNESS_METRICS = [
+  {key:'fatiga_fisica', label:'Fatiga física', invert:true},
+  {key:'fatiga_mental', label:'Fatiga mental', invert:true},
+  {key:'sueno_calidad', label:'Calidad del sueño', invert:false},
+  {key:'estres', label:'Estrés', invert:true},
+  {key:'ansiedad', label:'Ansiedad', invert:true},
+  {key:'dolor_muscular', label:'Dolor muscular', invert:true},
+  {key:'alimentacion', label:'Alimentación', invert:false},
+  {key:'hidratacion', label:'Hidratación', invert:false},
+];
+
+window.abrirMonitoreo = async function(){
+  activeView = 'monitoreo'; render();
+  await loadWellnessCheckins(currentAthleteId);
+  render();
+};
+async function loadWellnessCheckins(athleteId){
+  const { data, error } = await supabase.from('wellness_checkins').select('*').eq('athlete_id', athleteId).order('fecha', {ascending:true});
+  wellnessCheckins = (!error && data) ? data : [];
+}
+function volverAFicha(){ activeView='ficha'; render(); }
+window.volverAFicha = volverAFicha;
+
+function sparklineSVG(values, opts){
+  opts = opts||{};
+  const w = opts.width||220, h = opts.height||40;
+  if(values.length===0) return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"></svg>`;
+  const min = opts.min!=null? opts.min : Math.min(...values);
+  const max = opts.max!=null? opts.max : Math.max(...values);
+  const range = (max-min)||1;
+  const step = values.length>1 ? w/(values.length-1) : 0;
+  const pts = values.map((v,i)=> `${(i*step).toFixed(1)},${(h-2 - ((v-min)/range)*(h-4)).toFixed(1)}`).join(' ');
+  const color = opts.color || 'var(--primary)';
+  const lastX = ((values.length-1)*step).toFixed(1);
+  const lastY = (h-2 - ((values[values.length-1]-min)/range)*(h-4)).toFixed(1);
+  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="${lastX}" cy="${lastY}" r="3.5" fill="${color}"/></svg>`;
+}
+
+function wellnessAlert(){
+  if(wellnessCheckins.length<3) return null;
+  const ultimos3 = wellnessCheckins.slice(-3);
+  const avgFatiga = ultimos3.reduce((a,b)=>a+(b.fatiga_fisica||0),0)/3;
+  const avgSueno = ultimos3.reduce((a,b)=>a+(b.sueno_calidad||0),0)/3;
+  const avgEstres = ultimos3.reduce((a,b)=>a+(b.estres||0),0)/3;
+  if(avgFatiga>=5.5 && avgSueno<=3){
+    return 'Los últimos 3 registros muestran fatiga física alta combinada con mala calidad de sueño. Posible riesgo de sobrecarga — se sugiere revisar la carga de entrenamiento con el cuerpo técnico.';
+  }
+  if(avgEstres>=5.5 && avgFatiga>=5){
+    return 'Los últimos 3 registros muestran estrés y fatiga elevados de forma sostenida. Vale la pena priorizar técnicas de regulación (respiración, relajación progresiva) y monitorear de cerca.';
+  }
+  return null;
+}
+
+function viewMonitoreo(){
+  const today = new Date().toISOString().slice(0,10);
+  const yaHoy = wellnessCheckins.find(c=>c.fecha===today);
+  const alerta = wellnessAlert();
+
+  const formHtml = `
+    <div class="qsection-title">Check-in de hoy (${today})</div>
+    ${yaHoy? `<p class="hint">Ya cargaste un registro hoy — guardar de nuevo lo actualiza.</p>`:''}
+    <div class="grid3">
+      ${WELLNESS_METRICS.filter(m=>!['alimentacion','hidratacion'].includes(m.key)).map(m=>`
+        <div><label>${m.label} (1-7)</label><input type="number" min="1" max="7" id="wc_${m.key}" value="${yaHoy? (yaHoy[m.key]??''):''}"></div>
+      `).join('')}
+      <div><label>Horas de sueño</label><input type="number" step="0.5" min="0" max="14" id="wc_sueno_horas" value="${yaHoy? (yaHoy.sueno_horas??''):''}"></div>
+    </div>
+    <div class="qsection-title">Nutrición e hidratación</div>
+    <div class="grid2">
+      <div><label>Alimentación — calidad/adherencia percibida (1-7)</label><input type="number" min="1" max="7" id="wc_alimentacion" value="${yaHoy? (yaHoy.alimentacion??''):''}"></div>
+      <div><label>Hidratación percibida (1-7)</label><input type="number" min="1" max="7" id="wc_hidratacion" value="${yaHoy? (yaHoy.hidratacion??''):''}"></div>
+    </div>
+    <div class="qsection-title">Carga de entrenamiento (método RPE de sesión)</div>
+    <p class="hint">Escala de Borg CR-10: 0 = reposo total, 10 = esfuerzo máximo absoluto.</p>
+    <div class="grid2">
+      <div><label>RPE de la sesión de hoy (0-10)</label><input type="number" min="0" max="10" id="wc_rpe" value="${yaHoy? (yaHoy.rpe??''):''}"></div>
+      <div><label>Duración de la sesión (minutos)</label><input type="number" min="0" id="wc_duracion" value="${yaHoy? (yaHoy.duracion_min??''):''}"></div>
+    </div>
+    <label>Notas</label>
+    <textarea id="wc_notas">${esc(yaHoy? yaHoy.notas : '')}</textarea>
+    <div id="wcMsg"></div>
+    <div class="btn-row"><button class="btn-primary" onclick="window.guardarCheckin()">Guardar check-in de hoy</button></div>
+  `;
+
+  let historialSection = '<p class="hint">Todavía no hay check-ins registrados.</p>';
+  if(wellnessCheckins.length>0){
+    const recientes = wellnessCheckins.slice(-21);
+    const fechas = recientes.map(c=>c.fecha);
+    const rangoTxt = fechas.length>1? `${fechas[0]} → ${fechas[fechas.length-1]}` : fechas[0];
+    const sparks = WELLNESS_METRICS.map(m=>{
+      const vals = recientes.map(c=> c[m.key]==null? null : Number(c[m.key]));
+      const valsLimpios = vals.filter(v=>v!==null);
+      if(valsLimpios.length===0) return '';
+      const color = m.invert? 'var(--rojo)':'var(--verde)';
+      const ultimo = vals[vals.length-1];
+      return `<div class="score-card">
+        <div class="sc-label">${esc(m.label)}</div>
+        <div class="sc-value">${ultimo!=null? ultimo:'—'} / 7</div>
+        ${sparklineSVG(valsLimpios, {min:1,max:7,color})}
+      </div>`;
+    }).join('');
+
+    const cargaVals = recientes.map(c=> (c.rpe!=null && c.duracion_min!=null)? c.rpe*c.duracion_min : null).filter(v=>v!==null);
+    const cargaHtml = cargaVals.length? `<div class="score-card">
+        <div class="sc-label">Carga de entrenamiento (RPE × min)</div>
+        <div class="sc-value">${cargaVals[cargaVals.length-1]} AU</div>
+        ${sparklineSVG(cargaVals, {color:'var(--accent)'})}
+      </div>` : '';
+
+    historialSection = `<p class="hint">Últimos ${recientes.length} registros (${rangoTxt}). Escalas 1-7 salvo la carga de entrenamiento.</p>
+      <div class="score-grid">${sparks}${cargaHtml}</div>`;
+  }
+
+  return `<div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">${esc(currentAthlete.nombre)}</div><h1>Monitoreo diario de bienestar</h1></div>
+      <button class="btn-ghost" onclick="window.abrirFicha('${currentAthleteId}')">← Volver a la ficha</button>
+    </div>
+    <p class="hint">Check-in independiente de las evaluaciones formales, pensado para completarse con frecuencia (a diario o varias veces por semana).</p>
+    ${alerta? `<div class="pending-box"><strong>Alerta:</strong> ${esc(alerta)}</div>`:''}
+    ${formHtml}
+  </div>
+  <div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Tendencia</div><h1>Historial</h1></div></div>
+    ${historialSection}
+  </div>`;
+}
+window.guardarCheckin = async function(){
+  const g = id => { const v = document.getElementById(id).value; return v===''? null : Number(v); };
+  const today = new Date().toISOString().slice(0,10);
+  const payload = {
+    athlete_id: currentAthleteId, user_id: session.user.id, fecha: today,
+    fatiga_fisica: g('wc_fatiga_fisica'), fatiga_mental: g('wc_fatiga_mental'),
+    sueno_calidad: g('wc_sueno_calidad'), sueno_horas: g('wc_sueno_horas'),
+    estres: g('wc_estres'), ansiedad: g('wc_ansiedad'), dolor_muscular: g('wc_dolor_muscular'),
+    alimentacion: g('wc_alimentacion'), hidratacion: g('wc_hidratacion'),
+    rpe: g('wc_rpe'), duracion_min: g('wc_duracion'),
+    notas: document.getElementById('wc_notas').value || null,
+  };
+  const { error } = await supabase.from('wellness_checkins').upsert(payload, { onConflict: 'athlete_id,fecha' });
+  if(error){ document.getElementById('wcMsg').innerHTML = `<div class="error-box">Error al guardar: ${esc(error.message)}</div>`; return; }
+  await loadWellnessCheckins(currentAthleteId);
+  render();
+};
 
 /* ---------- 1) Grilla de concentración ---------- */
 const GRILLA_PARAMS = { principiante:{max:24}, intermedio:{max:49}, avanzado:{max:99} };
