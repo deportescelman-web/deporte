@@ -105,6 +105,13 @@
 
   /* ---------- Informe imprimible ---------- */
   .report-page{background:#fff;}
+  .report-portada{background:#fff;text-align:center;padding:110px 40px 60px;page-break-after:always;}
+  .portada-consultorio{font-family:var(--serif);font-size:30px;color:var(--primary-dark);letter-spacing:.5px;}
+  .portada-subtitulo{font-size:13px;color:var(--gray);letter-spacing:1px;text-transform:uppercase;margin-top:6px;}
+  .portada-linea{width:80px;height:3px;background:var(--accent);margin:34px auto;border-radius:2px;}
+  .portada-titulo{font-family:var(--serif);font-size:22px;color:var(--ink);margin-bottom:24px;}
+  .portada-atleta{font-size:26px;font-weight:700;color:var(--primary-dark);margin-bottom:10px;}
+  .portada-meta{font-size:13.5px;color:var(--gray);line-height:1.8;}
   .report-header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid var(--primary);padding-bottom:14px;margin-bottom:22px;}
   .report-title{font-family:var(--serif);font-size:24px;color:var(--primary-dark);}
   .report-meta{text-align:right;font-size:12px;color:var(--gray);}
@@ -1243,6 +1250,7 @@ window.iniciarTareaCognitiva = function(key, dificultad){
   if(key==='memoria_nback') return window.iniciarMemoriaNback(dificultad);
   if(key==='grilla_concentracion') return window.iniciarTecnicaGrilla(dificultad);
   if(key==='respiracion') return window.iniciarTecnicaRespiracion(dificultad);
+  if(key==='toma_decisiones') return window.iniciarTecnicaDecisiones(dificultad);
 };
 function volverDeTareaCognitiva(){ cog = null; activeView='evaluacion'; render(); }
 
@@ -1673,6 +1681,7 @@ const TECHNIQUES = {
   autohabla: {label:"Reestructuración de autohabla", cat:"Cognitivo", desc:"Identificar autohabla negativa habitual y reformularla en versión instruccional/motivacional."},
   metas: {label:"Definición de metas (proceso y resultado)", cat:"Motivación", desc:"Metas SMART separadas en proceso vs. resultado, con seguimiento de cumplimiento."},
   rutina_precompetitiva: {label:"Constructor de rutina pre-competitiva", cat:"Rutinas", desc:"Armar y guardar una secuencia personalizada de pasos previos a competir."},
+  toma_decisiones: {label:"Toma de decisiones bajo presión", cat:"Toma de decisiones", desc:"Escaneo visual rápido y elección de la mejor opción antes de que se acabe el tiempo. Entrena la velocidad y calidad de decisión bajo presión de tiempo, con 3 niveles de dificultad."},
 };
 
 async function loadTechniqueLogs(athleteId){
@@ -1723,6 +1732,7 @@ function viewTecnicaDetalle(key){
   if(key==='autohabla') return viewAutohabla();
   if(key==='metas') return viewMetas();
   if(key==='rutina_precompetitiva') return viewRutina();
+  if(key==='toma_decisiones') return viewTomaDecisiones();
 }
 function historialHtml(key){
   const logs = techniqueLogs.filter(l=>l.technique_key===key);
@@ -2048,6 +2058,82 @@ window.guardarRutina = async function(){
   if(ok){ tec = {key:'rutina_builder', pasos:[]}; render(); }
 };
 
+/* ---------- 9) Toma de decisiones bajo presión ---------- */
+const DECISION_PARAMS = {
+  principiante: {zones:3, timeLimit:5000, trials:8},
+  intermedio: {zones:4, timeLimit:3800, trials:10},
+  avanzado: {zones:5, timeLimit:2800, trials:12},
+};
+function viewTomaDecisiones(){
+  if(tec && tec.key==='toma_decisiones'){
+    return `<div class="panel">
+      <div class="panel-head"><div><div class="eyebrow">Toma de decisiones · ${tec.dificultad}</div><h1>Ensayo ${Math.min(tec.currentTrial+1,tec.params.trials)} de ${tec.params.trials}</h1></div></div>
+      <div id="decisionStage"></div>
+    </div>`;
+  }
+  return `<div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Toma de decisiones</div><h1>Toma de decisiones bajo presión</h1></div>
+      <button class="btn-ghost" onclick="window.volverATecnicas()">← Volver</button></div>
+    <p class="hint">Van a aparecer varias zonas numeradas (representan oportunidades de distinto valor, como un compañero libre vs. marcado). Elegí la de MAYOR número antes de que se acabe el tiempo. Entrena el escaneo visual rápido y la calidad de la elección bajo presión de tiempo.</p>
+    ${renderDifficultySelector('toma_decisiones')}
+    ${historialHtml('toma_decisiones')}
+  </div>`;
+}
+window.iniciarTecnicaDecisiones = function(dificultad){
+  const p = DECISION_PARAMS[dificultad];
+  tec = { key:'toma_decisiones', dificultad, params:p, currentTrial:0, results:[] };
+  activeView='toma_decisiones'; render();
+  setTimeout(nextDecisionTrial, 400);
+};
+function nextDecisionTrial(){
+  if(!tec || tec.key!=='toma_decisiones') return;
+  if(tec.currentTrial>=tec.params.trials) return finishDecisiones();
+  const values = [];
+  while(values.length<tec.params.zones){
+    const v = 1+Math.floor(Math.random()*9);
+    if(!values.includes(v)) values.push(v);
+  }
+  tec.currentValues = values;
+  tec.correctIndex = values.indexOf(Math.max(...values));
+  tec.stimulusTime = Date.now();
+  tec.responded = false;
+  renderDecisionStage();
+  tec.timeoutId = setTimeout(()=>{
+    if(!tec || tec.key!=='toma_decisiones') return;
+    if(!tec.responded){
+      tec.results.push({values:tec.currentValues, chosen:null, correct:false, rt:null});
+      tec.currentTrial++;
+      nextDecisionTrial();
+    }
+  }, tec.params.timeLimit);
+}
+function renderDecisionStage(){
+  const el = document.getElementById('decisionStage');
+  if(!el) return;
+  const boxes = tec.currentValues.map((v,i)=>`<div onclick="window.decisionClick(${i})" style="width:90px;height:90px;border-radius:10px;background:#F1F6F9;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:var(--primary-dark);cursor:pointer;">${v}</div>`).join('');
+  el.innerHTML = `<p class="hint">Elegí la zona con el número más alto — tenés hasta ${(tec.params.timeLimit/1000).toFixed(1)}s.</p>
+    <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;">${boxes}</div>`;
+}
+window.decisionClick = function(i){
+  if(!tec || tec.key!=='toma_decisiones' || tec.responded) return;
+  tec.responded = true;
+  clearTimeout(tec.timeoutId);
+  const rt = Date.now()-tec.stimulusTime;
+  const correct = i===tec.correctIndex;
+  tec.results.push({values:tec.currentValues, chosen:i, correct, rt});
+  tec.currentTrial++;
+  nextDecisionTrial();
+};
+function finishDecisiones(){
+  const results = tec.results;
+  const dificultad = tec.dificultad;
+  const correctCount = results.filter(r=>r.correct).length;
+  const respondidos = results.filter(r=>r.rt!==null);
+  const meanRt = respondidos.length? Math.round(respondidos.reduce((a,b)=>a+b.rt,0)/respondidos.length): null;
+  const accuracy = Math.round((correctCount/results.length)*100);
+  guardarTechniqueLog('toma_decisiones', {dificultad, trials:results.length, correctCount, meanRt, accuracy}, `${accuracy}% de aciertos, ${meanRt!==null? meanRt+' ms promedio':'sin respuestas a tiempo'} (${dificultad})`).then(()=>{ tec=null; activeView='tecnicas'; render(); });
+}
+
 /* ============================================================
    INFORME INTEGRADO
    ============================================================ */
@@ -2061,6 +2147,52 @@ function viewInforme(){
   </div>
   <div class="panel" id="reportPanel">${buildReporteCompleto()}</div>`;
 }
+/* ============================================================
+   MOTOR DE RECOMENDACIÓN DE TÉCNICAS
+   ============================================================ */
+const CONSULTORIO = { nombre:'PSONRIE', subtitulo:'Psicología Deportiva · Lic. Celman Felman Yáñez Roca', logoUrl:'' };
+
+const REGLAS_RECOMENDACION = [
+  {cond:m=> m.csai2?.completed && m.csai2.scores.somatica>=3, categoria:'Regulación de activación', tecnica:'respiracion', motivo:'Activación somática elevada en el CSAI-2R', prioridad:'alta'},
+  {cond:m=> m.sas2?.completed && m.sas2.scores.somatica>=3, categoria:'Regulación de activación', tecnica:'respiracion', motivo:'Ansiedad somática elevada en el SAS-2', prioridad:'alta'},
+  {cond:m=> m.csai2?.completed && m.csai2.scores.cognitiva>=3, categoria:'Diálogo interno', tecnica:'autohabla', motivo:'Ansiedad cognitiva elevada (preocupación excesiva) en el CSAI-2R', prioridad:'alta'},
+  {cond:m=> m.pss14?.completed && m.pss14.scores.total>=27, categoria:'Regulación de activación', tecnica:'relajacion_progresiva', motivo:'Estrés percibido general alto (PSS-14)', prioridad:'alta'},
+  {cond:m=> m.abq?.completed && m.abq.scores.agotamiento>=3.5, categoria:'Recuperación', tecnica:'relajacion_progresiva', motivo:'Agotamiento físico/emocional elevado (ABQ)', prioridad:'alta'},
+  {cond:m=> m.mood?.completed && m.mood.scores.perturbacionTotal>=4, categoria:'Regulación anímica', tecnica:'respiracion', motivo:'Perturbación anímica elevada en el estado de ánimo pre-competitivo', prioridad:'media'},
+  {cond:m=> m.sms28?.completed && (m.sms28.scores.amotivacion>=4 || m.sms28.scores.indiceAutodeterminacion<0), categoria:'Motivación', tecnica:'metas', motivo:'Amotivación elevada o motivación predominantemente controlada (SMS-28)', prioridad:'alta'},
+  {cond:m=> m.teosq?.completed && (m.teosq.scores.ego - m.teosq.scores.tarea) > 0.5, categoria:'Motivación', tecnica:'metas', motivo:'Orientación al ego dominante sobre la tarea (TEOSQ)', prioridad:'media'},
+  {cond:m=> m.autoeficacia?.completed && m.autoeficacia.scores.error<2.5, categoria:'Tolerancia al error', tecnica:'autohabla', motivo:'Baja autoeficacia para recuperarse tras cometer un error', prioridad:'alta'},
+  {cond:m=> m.autoeficacia?.completed && m.autoeficacia.scores.presion<2.5, categoria:'Control bajo presión', tecnica:'centering', motivo:'Baja autoeficacia en momentos de presión', prioridad:'alta'},
+  {cond:m=> m.fss2?.completed && (m.fss2.scores.control<3 || m.fss2.scores.autoconciencia<3), categoria:'Concentración', tecnica:'centering', motivo:'Baja sensación de control o alta autoconciencia durante la competencia (FSS-2)', prioridad:'media'},
+  {cond:m=> m.fss2?.completed && m.fss2.scores.equilibrio<3, categoria:'Concentración', tecnica:'rutina_precompetitiva', motivo:'Desajuste entre el desafío percibido y la habilidad (FSS-2)', prioridad:'media'},
+  {cond:m=> m.geq?.completed && m.geq.scores.global<4, categoria:'Comunicación y cohesión', tecnica:null, motivo:'Cohesión de equipo baja (GEQ) — trabajar en conjunto con el cuerpo técnico; la biblioteca actual no tiene una técnica individual para esto', prioridad:'media'},
+  {cond:m=> m.reaction_choice?.completed && m.reaction_choice.scores.noGoTotal && (m.reaction_choice.scores.commissions/m.reaction_choice.scores.noGoTotal)>0.3, categoria:'Control inhibitorio', tecnica:'centering', motivo:'Tasa alta de errores de comisión en la tarea Go/No-Go (impulsividad)', prioridad:'alta'},
+  {cond:m=> m.atencion_sostenida?.completed && (m.atencion_sostenida.scores.omissions>5 || (m.atencion_sostenida.scores.firstHalfHitRate!=null && m.atencion_sostenida.scores.secondHalfHitRate!=null && (m.atencion_sostenida.scores.firstHalfHitRate-m.atencion_sostenida.scores.secondHalfHitRate)>0.25)), categoria:'Atención sostenida', tecnica:'grilla_concentracion', motivo:'Omisiones elevadas o caída atencional en la tarea de atención sostenida (CPT)', prioridad:'alta'},
+  {cond:m=> m.memoria_nback?.completed && m.memoria_nback.scores.precision<60, categoria:'Memoria de trabajo', tecnica:'visualizacion', motivo:'Precisión baja en la tarea de memoria de trabajo (n-back)', prioridad:'media'},
+  {cond:m=> m.reaction_simple?.completed && m.reaction_simple.scores.sd>100, categoria:'Consistencia atencional', tecnica:'centering', motivo:'Alta variabilidad en el tiempo de reacción simple', prioridad:'media'},
+];
+
+function buildRecomendacionesTecnicas(m){
+  const activas = REGLAS_RECOMENDACION.filter(r=>{ try{ return !!r.cond(m); }catch(e){ return false; } });
+  if(activas.length===0){
+    return '<p class="hint">No se detectaron áreas que requieran una técnica prioritaria según los resultados registrados en esta evaluación. Se sugiere mantener el trabajo preventivo habitual.</p>';
+  }
+  const porCategoria = {};
+  activas.forEach(r=>{ (porCategoria[r.categoria] = porCategoria[r.categoria]||[]).push(r); });
+  let html = '';
+  Object.keys(porCategoria).forEach(cat=>{
+    const items = porCategoria[cat].slice().sort((a,b)=> (a.prioridad==='alta'?0:1)-(b.prioridad==='alta'?0:1));
+    html += `<div style="margin-bottom:14px;"><strong style="color:var(--primary-dark);">${esc(cat)}</strong><ul style="margin-top:6px;">`;
+    items.forEach(r=>{
+      const tecLabel = r.tecnica ? ((TECHNIQUES[r.tecnica]||{}).label || r.tecnica) : null;
+      const badge = r.prioridad==='alta' ? '<span class="badge rojo"><span class="ring"></span>Prioritario</span>' : '<span class="badge amarillo"><span class="ring"></span>A considerar</span>';
+      html += `<li style="margin-bottom:4px;">${tecLabel? `<strong>${esc(tecLabel)}</strong> — `:''}${esc(r.motivo)} ${badge}</li>`;
+    });
+    html += `</ul></div>`;
+  });
+  return html;
+}
+
 function fmtPct(hits,total){ return total? Math.round((hits/total)*100)+'%' : '—'; }
 function buildReporteCompleto(){
   const a = currentAthlete;
@@ -2082,7 +2214,17 @@ function buildReporteCompleto(){
     ${techniqueLogs.slice(0,15).map(l=>`<tr><td>${esc((TECHNIQUES[l.technique_key]||{}).label||l.technique_key)}</td><td>${new Date(l.created_at).toLocaleDateString('es-BO')}</td><td>${esc(l.notes||'—')}</td></tr>`).join('')}
     </table>`;
 
-  return `<div class="report-page">
+  return `<div class="report-portada">
+    ${CONSULTORIO.logoUrl? `<img src="${CONSULTORIO.logoUrl}" style="max-height:90px;margin-bottom:22px;">`:''}
+    <div class="portada-consultorio">${esc(CONSULTORIO.nombre)}</div>
+    <div class="portada-subtitulo">${esc(CONSULTORIO.subtitulo)}</div>
+    <div class="portada-linea"></div>
+    <div class="portada-titulo">Informe de Evaluación Psicodeportiva</div>
+    <div class="portada-atleta">${esc(a.nombre)}</div>
+    <div class="portada-meta">${esc(a.deporte||'')}${a.categoria? ' · '+esc(a.categoria):''}<br>Evaluación del ${esc(e.fecha_evaluacion)}<br>Evaluador/a: ${esc(e.evaluador)||'—'}</div>
+  </div>
+
+  <div class="report-page">
     <div class="report-header">
       <div><div class="report-title">Informe de Evaluación Psicodeportiva</div><div style="color:var(--gray);font-size:13px;">Batería Psicodeportiva Integral (BPI)</div></div>
       <div class="report-meta">Fecha del informe: ${today}<br>Evaluador/a: ${esc(e.evaluador)||'—'}</div>
@@ -2124,10 +2266,15 @@ function buildReporteCompleto(){
       ${tecnicasHtml}
     </div>
 
-    <div class="report-section"><h3>7. Recomendaciones generales</h3>
+    <div class="report-section"><h3>7. Técnicas recomendadas según los resultados</h3>
+      <p class="hint" style="font-style:italic;">Generado automáticamente cruzando los resultados de esta evaluación con la biblioteca de técnicas. Es una orientación, no reemplaza el juicio clínico del profesional.</p>
+      ${buildRecomendacionesTecnicas(moduleResults)}
+    </div>
+
+    <div class="report-section"><h3>8. Recomendaciones generales</h3>
       <ul>
         <li>Compartir los hallazgos relevantes con el cuerpo técnico, respetando la confidencialidad clínica.</li>
-        <li>Priorizar las técnicas de la biblioteca que correspondan a las áreas de mayor riesgo detectadas.</li>
+        <li>Priorizar las técnicas señaladas como "Prioritario" en la sección anterior.</li>
         <li>Reevaluar con la misma batería en la siguiente ventana de seguimiento para medir evolución.</li>
       </ul>
     </div>
