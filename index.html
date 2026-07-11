@@ -79,6 +79,8 @@
   .scale label.opt{display:flex;flex-direction:column;align-items:center;font-size:9.5px;color:var(--gray);font-weight:400;margin:0;width:60px;text-align:center;cursor:pointer;}
   .scale input{margin-bottom:3px;cursor:pointer;}
   .score-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-top:16px;}
+  .cancel-toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding:12px 16px;background:#F4F7F9;border-radius:8px;}
+  .cancel-timer{font-family:var(--mono);font-size:22px;color:var(--primary-dark);font-weight:700;}
   .score-card{border:1px solid var(--border);border-radius:8px;padding:14px 16px;}
   .score-card .sc-label{font-size:11.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--gray);font-weight:700;}
   .score-card .sc-value{font-family:var(--mono);font-size:22px;margin:4px 0;}
@@ -91,6 +93,35 @@
   .badge.rojo{background:var(--rojo-bg);color:var(--rojo);}
   .badge.rojo .ring{background:var(--rojo);}
   .interpretation-box{background:#F7FAFB;border-left:4px solid var(--primary);border-radius:6px;padding:16px 18px;margin-top:14px;font-size:13.8px;line-height:1.7;}
+
+  /* ---------- Biblioteca de técnicas ---------- */
+  .tec-grid-numbers{display:grid;grid-template-columns:repeat(10,44px);gap:4px;margin:16px 0;}
+  .tec-cell{width:44px;height:44px;border:1px solid var(--border);border-radius:6px;background:#fff;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:13px;cursor:pointer;}
+  .tec-cell.found{background:var(--verde-bg);color:var(--verde);border-color:var(--verde);}
+  .breath-circle{width:180px;height:180px;border-radius:50%;background:var(--accent);margin:30px auto;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:700;transition:transform 3.8s ease-in-out;}
+  .tec-history{margin-top:20px;border-top:1px solid var(--border);padding-top:14px;}
+  .tec-history-item{font-size:12.5px;color:var(--gray);padding:6px 0;border-bottom:1px solid #F0F3F6;}
+  .category-tag{display:inline-block;background:#F1F6F9;color:var(--primary);border-radius:12px;padding:2px 10px;font-size:11px;font-weight:700;margin-bottom:6px;}
+
+  /* ---------- Informe imprimible ---------- */
+  .report-page{background:#fff;}
+  .report-header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid var(--primary);padding-bottom:14px;margin-bottom:22px;}
+  .report-title{font-family:var(--serif);font-size:24px;color:var(--primary-dark);}
+  .report-meta{text-align:right;font-size:12px;color:var(--gray);}
+  .report-section{margin-bottom:26px;page-break-inside:avoid;}
+  .report-section h3{font-size:15px;text-transform:uppercase;letter-spacing:.8px;color:var(--primary);border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:10px;}
+  table.report-table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px;}
+  table.report-table th,table.report-table td{border:1px solid var(--border);padding:6px 10px;text-align:left;}
+  table.report-table th{background:#F4F7F9;}
+  .signature-block{margin-top:60px;display:flex;justify-content:space-between;}
+  .sig-line{border-top:1px solid var(--ink);width:260px;text-align:center;padding-top:6px;font-size:12px;color:var(--gray);}
+
+  @media print{
+    .sidebar, .no-print { display:none !important; }
+    #reportPanel { display:block !important; border:none; padding:0; }
+    body{background:#fff;}
+    .main{max-width:100%;padding:0;}
+  }
 </style>
 </head>
 <body>
@@ -105,7 +136,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
    CONFIGURACIÓN — reemplazá estos dos valores con los de TU
    proyecto de Supabase (Project Settings → API).
    ============================================================ */
-const SUPABASE_URL = 'https://oteeceupgmcvstpmgtwl.supabase.co';
+const SUPABASE_URL = 'ttps://oteeceupgmcvstpmgtwl.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im90ZWVjZXVwZ21jdnN0cG1ndHdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1OTcwNjAsImV4cCI6MjA5OTE3MzA2MH0.jaMCi0O7RGdIfVKCHXRU6OhR3DamSUwuRKTURaZtSos';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -121,6 +152,8 @@ let currentEvaluationId = null;
 let currentEvaluation = null;
 let moduleResults = {}; // { module_key: {raw_data, scores, completed} }
 let cog = null; // estado transitorio de la tarea cognitiva interactiva en curso
+let tec = null; // estado transitorio de la técnica de entrenamiento mental en curso
+let techniqueLogs = []; // historial de práctica de técnicas del deportista actual
 
 function esc(s){ return (s===null||s===undefined?'':s.toString()).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
@@ -210,6 +243,9 @@ function render(){
   else if(activeView==='reaction_choice') bodyHtml = viewReactionChoice();
   else if(activeView==='atencion_sostenida') bodyHtml = viewAtencionSostenida();
   else if(activeView==='memoria_nback') bodyHtml = viewMemoriaNback();
+  else if(activeView==='tecnicas') bodyHtml = viewTecnicas();
+  else if(TECHNIQUES[activeView]) bodyHtml = viewTecnicaDetalle(activeView);
+  else if(activeView==='informe') bodyHtml = viewInforme();
 
   root.innerHTML = `
   <div class="app">
@@ -377,6 +413,7 @@ function viewFicha(){
     </div>
     ${a.motivo_evaluacion? `<p><strong>Motivo de evaluación:</strong> ${esc(a.motivo_evaluacion)}</p>`:''}
     ${a.lesiones? `<p><strong>Lesiones relevantes:</strong> ${esc(a.lesiones)}</p>`:''}
+    <div class="btn-row"><button class="btn-primary" onclick="window.abrirTecnicas()">🧠 Plan de entrenamiento mental</button></div>
   </div>
 
   <div class="panel">
@@ -772,6 +809,12 @@ function viewEvaluacion(){
     <p class="hint">Cada tarea tiene 3 niveles de dificultad. Elegí el nivel al tocar "Aplicar".</p>
     ${moduleCardsHtml(GRUPO_COGNITIVO)}
     ${cognitivoDone ? `<div class="interpretation-box">${buildInterpretacionCognitiva()}</div>` : `<p class="hint">La interpretación integrada aparece al completar las 4 tareas.</p>`}
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Cierre</div><h1>Informe integrado</h1></div></div>
+    <p class="hint">Genera un documento imprimible con todos los resultados completados de esta evaluación, más el historial de técnicas de entrenamiento mental del deportista.</p>
+    <div class="btn-row"><button class="btn-primary" onclick="window.abrirInforme()">Generar informe</button></div>
   </div>
   `;
 }
@@ -1185,6 +1228,8 @@ window.iniciarTareaCognitiva = function(key, dificultad){
   if(key==='reaction_choice') return window.iniciarReactionChoice(dificultad);
   if(key==='atencion_sostenida') return window.iniciarAtencionSostenida(dificultad);
   if(key==='memoria_nback') return window.iniciarMemoriaNback(dificultad);
+  if(key==='grilla_concentracion') return window.iniciarTecnicaGrilla(dificultad);
+  if(key==='respiracion') return window.iniciarTecnicaRespiracion(dificultad);
 };
 function volverDeTareaCognitiva(){ cog = null; activeView='evaluacion'; render(); }
 
@@ -1599,6 +1644,486 @@ function buildInterpretacionCognitiva(){
   }
 
   return lines.map(l=>`<p>${l}</p>`).join('') + `<p><strong>${sintesis}</strong></p>`;
+}
+
+/* ============================================================
+   BIBLIOTECA DE TÉCNICAS DE ENTRENAMIENTO MENTAL
+   ============================================================ */
+function shuffleArr(arr){ const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+const TECHNIQUES = {
+  grilla_concentracion: {label:"Grilla de concentración", cat:"Atención", desc:"Buscar números en orden ascendente contra el reloj. Entrena atención selectiva y sostenida bajo presión de tiempo."},
+  centering: {label:"Centering (anclaje atencional rápido)", cat:"Atención", desc:"Ejercicio de 45 segundos para recuperar el foco justo antes de competir."},
+  respiracion: {label:"Respiración guiada (caja 4-4-4-4)", cat:"Regulación", desc:"Respiración diafragmática con ritmo visual guiado, para bajar activación antes de competir."},
+  relajacion_progresiva: {label:"Relajación muscular progresiva", cat:"Regulación", desc:"Guion paso a paso de tensión-distensión por grupo muscular."},
+  visualizacion: {label:"Visualización / imaginería guiada", cat:"Memoria e imaginería", desc:"Guion estructurado para repasar mentalmente una ejecución exitosa, adaptado al deporte del atleta."},
+  autohabla: {label:"Reestructuración de autohabla", cat:"Cognitivo", desc:"Identificar autohabla negativa habitual y reformularla en versión instruccional/motivacional."},
+  metas: {label:"Definición de metas (proceso y resultado)", cat:"Motivación", desc:"Metas SMART separadas en proceso vs. resultado, con seguimiento de cumplimiento."},
+  rutina_precompetitiva: {label:"Constructor de rutina pre-competitiva", cat:"Rutinas", desc:"Armar y guardar una secuencia personalizada de pasos previos a competir."},
+};
+
+async function loadTechniqueLogs(athleteId){
+  const { data, error } = await supabase.from('technique_logs').select('*').eq('athlete_id', athleteId).order('created_at', {ascending:false});
+  techniqueLogs = (!error && data) ? data : [];
+}
+window.abrirTecnicas = async function(){
+  activeView = 'tecnicas'; render();
+  await loadTechniqueLogs(currentAthleteId);
+  render();
+};
+async function guardarTechniqueLog(key, data, notes){
+  const payload = { athlete_id: currentAthleteId, user_id: session.user.id, technique_key:key, data, notes: notes||null };
+  const { error } = await supabase.from('technique_logs').insert(payload);
+  if(error){ alert('Error al guardar: '+error.message); return false; }
+  await loadTechniqueLogs(currentAthleteId);
+  return true;
+}
+function volverATecnicas(){ tec=null; activeView='tecnicas'; render(); }
+window.volverATecnicas = volverATecnicas;
+
+function viewTecnicas(){
+  const cards = Object.keys(TECHNIQUES).map(key=>{
+    const t = TECHNIQUES[key];
+    const count = techniqueLogs.filter(l=>l.technique_key===key).length;
+    return `<div class="module-card">
+      <div><span class="category-tag">${esc(t.cat)}</span><div class="mname">${esc(t.label)}</div><div class="mdesc">${esc(t.desc)}</div></div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span class="status-pill ${count>0?'completo':'pendiente'}">${count} práctica(s)</span>
+        <button class="btn-primary" onclick="window.gotoInstrumento('${key}')">Abrir</button>
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">${esc(currentAthlete.nombre)}</div><h1>Plan de entrenamiento mental</h1></div>
+      <button class="btn-ghost" onclick="window.abrirFicha('${currentAthleteId}')">← Volver a la ficha</button>
+    </div>
+    <p class="hint">8 técnicas interactivas. El deportista puede practicarlas directo en pantalla; cada práctica queda registrada en su historial.</p>
+    ${cards}
+  </div>`;
+}
+function viewTecnicaDetalle(key){
+  if(key==='grilla_concentracion') return viewGrilla();
+  if(key==='centering') return viewCentering();
+  if(key==='respiracion') return viewRespiracion();
+  if(key==='relajacion_progresiva') return viewRelajacion();
+  if(key==='visualizacion') return viewVisualizacion();
+  if(key==='autohabla') return viewAutohabla();
+  if(key==='metas') return viewMetas();
+  if(key==='rutina_precompetitiva') return viewRutina();
+}
+function historialHtml(key){
+  const logs = techniqueLogs.filter(l=>l.technique_key===key);
+  if(logs.length===0) return '';
+  const rows = logs.slice(0,8).map(l=>`<div class="tec-history-item">${new Date(l.created_at).toLocaleString('es-BO')} ${l.notes? '— '+esc(l.notes):''}</div>`).join('');
+  return `<div class="tec-history"><strong style="font-size:12.5px;color:var(--gray);">Historial de práctica</strong>${rows}</div>`;
+}
+
+/* ---------- 1) Grilla de concentración ---------- */
+const GRILLA_PARAMS = { principiante:{max:24}, intermedio:{max:49}, avanzado:{max:99} };
+function viewGrilla(){
+  if(tec && tec.key==='grilla_concentracion'){
+    const elapsed = ((Date.now()-tec.startTime)/1000).toFixed(1);
+    const cellsHtml = tec.grid.map(n=>{
+      const found = n < tec.next;
+      return `<div class="tec-cell ${found?'found':''}" onclick="window.grillaClick(${n})">${String(n).padStart(2,'0')}</div>`;
+    }).join('');
+    return `<div class="panel">
+      <div class="panel-head"><div><div class="eyebrow">Grilla de concentración · ${tec.dificultad}</div><h1>Buscá el ${String(tec.next).padStart(2,'0')}</h1></div></div>
+      <p class="hint">Tiempo: ${elapsed}s · Errores: ${tec.errors}</p>
+      <div class="tec-grid-numbers">${cellsHtml}</div>
+    </div>`;
+  }
+  return `<div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Atención</div><h1>Grilla de concentración</h1></div>
+      <button class="btn-ghost" onclick="window.volverATecnicas()">← Volver</button></div>
+    <p class="hint">Buscá y tocá los números en orden ascendente empezando en 00, lo más rápido posible.</p>
+    ${renderDifficultySelector('grilla_concentracion')}
+    ${historialHtml('grilla_concentracion')}
+  </div>`;
+}
+window.iniciarTareaCognitivaExtra = null; // reservado
+window.iniciarTecnicaGrilla = function(dificultad){
+  const max = GRILLA_PARAMS[dificultad].max;
+  const numbers = []; for(let i=0;i<=99;i++) numbers.push(i);
+  tec = { key:'grilla_concentracion', dificultad, max, grid: shuffleArr(numbers), next:0, startTime:Date.now(), errors:0 };
+  activeView='grilla_concentracion'; render();
+};
+window.grillaClick = function(n){
+  if(!tec || tec.key!=='grilla_concentracion') return;
+  if(n===tec.next){
+    tec.next++;
+    if(tec.next>tec.max){
+      const timeSec = ((Date.now()-tec.startTime)/1000).toFixed(1);
+      guardarTechniqueLog('grilla_concentracion', {dificultad:tec.dificultad, max:tec.max, timeSec:Number(timeSec), errors:tec.errors}, `Completada en ${timeSec}s con ${tec.errors} error(es) (0-${tec.max})`).then(()=>{ tec=null; activeView='tecnicas'; render(); });
+      return;
+    }
+  } else {
+    tec.errors++;
+  }
+  render();
+};
+
+/* ---------- 2) Centering ---------- */
+const CENTERING_STEPS = [
+  {t:"Inhalá profundo por la nariz, llevando el aire al abdomen", dur:5},
+  {t:"Sostené el aire un instante", dur:2},
+  {t:"Exhalá lento por la boca, soltando la tensión de los hombros", dur:6},
+  {t:"Fijá la mirada en un punto externo fijo (la pelota, el aro, la línea)", dur:5},
+  {t:"Decite internamente una palabra clave corta (ej. 'firme', 'listo')", dur:4},
+  {t:"Volvé la atención al presente. Estás listo/a.", dur:3},
+];
+function viewCentering(){
+  if(tec && tec.key==='centering'){
+    const step = CENTERING_STEPS[tec.step];
+    return `<div class="panel">
+      <div class="panel-head"><div><div class="eyebrow">Centering</div><h1>Paso ${tec.step+1} de ${CENTERING_STEPS.length}</h1></div></div>
+      <div style="height:180px;border-radius:10px;background:#F1F6F9;display:flex;align-items:center;justify-content:center;padding:20px;text-align:center;font-size:18px;color:var(--primary-dark);">${esc(step.t)}</div>
+    </div>`;
+  }
+  return `<div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Atención</div><h1>Centering (anclaje atencional rápido)</h1></div>
+      <button class="btn-ghost" onclick="window.volverATecnicas()">← Volver</button></div>
+    <p class="hint">Ejercicio de ~25 segundos para usar justo antes de competir o entre puntos/jugadas.</p>
+    <div class="btn-row"><button class="btn-primary" onclick="window.iniciarCentering()">Iniciar</button></div>
+    ${historialHtml('centering')}
+  </div>`;
+}
+window.iniciarCentering = function(){
+  tec = { key:'centering', step:0 };
+  activeView='centering'; render();
+  centeringNext();
+};
+function centeringNext(){
+  if(!tec || tec.key!=='centering') return;
+  if(tec.step>=CENTERING_STEPS.length){
+    guardarTechniqueLog('centering', {completedSteps:CENTERING_STEPS.length}, 'Secuencia completa').then(()=>{ tec=null; activeView='tecnicas'; render(); });
+    return;
+  }
+  render();
+  setTimeout(()=>{ tec.step++; centeringNext(); }, CENTERING_STEPS[Math.min(tec.step,CENTERING_STEPS.length-1)].dur*1000);
+}
+
+/* ---------- 3) Respiración guiada (caja 4-4-4-4) ---------- */
+const RESP_PARAMS = { principiante:{cycles:4}, intermedio:{cycles:7}, avanzado:{cycles:10} };
+const RESP_PHASES = [ {t:'Inhalá', scale:1.3}, {t:'Sostené', scale:1.3}, {t:'Exhalá', scale:0.8}, {t:'Sostené', scale:0.8} ];
+function viewRespiracion(){
+  if(tec && tec.key==='respiracion'){
+    const phase = RESP_PHASES[tec.phaseIdx];
+    return `<div class="panel">
+      <div class="panel-head"><div><div class="eyebrow">Respiración en caja · ciclo ${tec.cycle+1} de ${tec.totalCycles}</div><h1>${phase.t}</h1></div></div>
+      <div class="breath-circle" style="transform:scale(${phase.scale});">${phase.t}</div>
+    </div>`;
+  }
+  return `<div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Regulación</div><h1>Respiración guiada (caja 4-4-4-4)</h1></div>
+      <button class="btn-ghost" onclick="window.volverATecnicas()">← Volver</button></div>
+    <p class="hint">Inhalar 4s, sostener 4s, exhalar 4s, sostener 4s. Elegí duración por cantidad de ciclos.</p>
+    ${renderDifficultySelector('respiracion')}
+    ${historialHtml('respiracion')}
+  </div>`;
+}
+window.iniciarTecnicaRespiracion = function(dificultad){
+  const p = RESP_PARAMS[dificultad];
+  tec = { key:'respiracion', dificultad, cycle:0, totalCycles:p.cycles, phaseIdx:0 };
+  activeView='respiracion'; render();
+  respiracionTick();
+};
+function respiracionTick(){
+  if(!tec || tec.key!=='respiracion') return;
+  render();
+  setTimeout(()=>{
+    if(!tec || tec.key!=='respiracion') return;
+    tec.phaseIdx++;
+    if(tec.phaseIdx>=RESP_PHASES.length){
+      tec.phaseIdx=0; tec.cycle++;
+    }
+    if(tec.cycle>=tec.totalCycles){
+      guardarTechniqueLog('respiracion', {dificultad:tec.dificultad, cycles:tec.totalCycles}, `${tec.totalCycles} ciclos completos`).then(()=>{ tec=null; activeView='tecnicas'; render(); });
+      return;
+    }
+    respiracionTick();
+  }, 4000);
+}
+
+/* ---------- 4) Relajación muscular progresiva ---------- */
+const RELAJ_GRUPOS = ['Manos y antebrazos','Brazos y hombros','Cara y mandíbula','Cuello','Abdomen','Piernas','Pies'];
+function viewRelajacion(){
+  if(tec && tec.key==='relajacion_progresiva'){
+    const grupo = RELAJ_GRUPOS[tec.idx];
+    const fase = tec.fase;
+    return `<div class="panel">
+      <div class="panel-head"><div><div class="eyebrow">Relajación progresiva</div><h1>${grupo}</h1></div></div>
+      <div style="height:160px;border-radius:10px;background:${fase==='tensar'?'var(--amarillo-bg)':'var(--verde-bg)'};display:flex;align-items:center;justify-content:center;font-size:20px;color:${fase==='tensar'?'var(--amarillo)':'var(--verde)'};">
+        ${fase==='tensar' ? 'Tensá esta zona con fuerza (5s)' : 'Soltá toda la tensión, notá la diferencia (8s)'}
+      </div>
+      <p class="hint">Zona ${tec.idx+1} de ${RELAJ_GRUPOS.length}</p>
+    </div>`;
+  }
+  return `<div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Regulación</div><h1>Relajación muscular progresiva</h1></div>
+      <button class="btn-ghost" onclick="window.volverATecnicas()">← Volver</button></div>
+    <p class="hint">Recorre 7 grupos musculares, tensando 5 segundos y soltando 8. Dura unos 3 minutos.</p>
+    <div class="btn-row"><button class="btn-primary" onclick="window.iniciarRelajacion()">Iniciar</button></div>
+    ${historialHtml('relajacion_progresiva')}
+  </div>`;
+}
+window.iniciarRelajacion = function(){
+  tec = { key:'relajacion_progresiva', idx:0, fase:'tensar' };
+  activeView='relajacion_progresiva'; render();
+  relajacionTick();
+};
+function relajacionTick(){
+  if(!tec || tec.key!=='relajacion_progresiva') return;
+  render();
+  const dur = tec.fase==='tensar' ? 5000 : 8000;
+  setTimeout(()=>{
+    if(!tec || tec.key!=='relajacion_progresiva') return;
+    if(tec.fase==='tensar'){ tec.fase='soltar'; }
+    else { tec.fase='tensar'; tec.idx++; }
+    if(tec.idx>=RELAJ_GRUPOS.length){
+      guardarTechniqueLog('relajacion_progresiva', {gruposCompletados:RELAJ_GRUPOS.length}, 'Secuencia completa').then(()=>{ tec=null; activeView='tecnicas'; render(); });
+      return;
+    }
+    relajacionTick();
+  }, dur);
+}
+
+/* ---------- 5) Visualización / imaginería guiada ---------- */
+function visualizacionSteps(){
+  const deporte = (currentAthlete && currentAthlete.deporte) || 'tu deporte';
+  return [
+    {t:`Cerrá los ojos y respirá tranquilo/a. Imaginate en el lugar exacto donde vas a competir en ${deporte}.`, dur:15},
+    {t:'Notá los detalles: los sonidos, la temperatura, el peso de tu equipo, cómo se siente tu cuerpo.', dur:15},
+    {t:'Visualizate ejecutando tu gesto técnico principal de forma perfecta, con total control.', dur:20},
+    {t:'Sentí la confianza en ese momento. Notá cómo reacciona tu cuerpo ante el éxito.', dur:15},
+    {t:'Imaginate manejando un imprevisto (un error, presión del rival) y recuperando el control rápidamente.', dur:15},
+    {t:'Cerrá la visualización sintiéndote preparado/a y en control. Abrí los ojos cuando estés listo/a.', dur:10},
+  ];
+}
+function viewVisualizacion(){
+  if(tec && tec.key==='visualizacion'){
+    const steps = tec.steps;
+    const step = steps[tec.idx];
+    return `<div class="panel">
+      <div class="panel-head"><div><div class="eyebrow">Visualización guiada</div><h1>Paso ${tec.idx+1} de ${steps.length}</h1></div></div>
+      <div style="min-height:180px;border-radius:10px;background:#F1F6F9;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;font-size:17px;color:var(--primary-dark);">${esc(step.t)}</div>
+    </div>`;
+  }
+  return `<div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Memoria e imaginería</div><h1>Visualización / imaginería guiada</h1></div>
+      <button class="btn-ghost" onclick="window.volverATecnicas()">← Volver</button></div>
+    <p class="hint">Guion de ~90 segundos adaptado al deporte del atleta, para repasar mentalmente una ejecución exitosa.</p>
+    <div class="btn-row"><button class="btn-primary" onclick="window.iniciarVisualizacion()">Iniciar</button></div>
+    ${historialHtml('visualizacion')}
+  </div>`;
+}
+window.iniciarVisualizacion = function(){
+  tec = { key:'visualizacion', idx:0, steps: visualizacionSteps() };
+  activeView='visualizacion'; render();
+  visualizacionTick();
+};
+function visualizacionTick(){
+  if(!tec || tec.key!=='visualizacion') return;
+  render();
+  const step = tec.steps[tec.idx];
+  setTimeout(()=>{
+    if(!tec || tec.key!=='visualizacion') return;
+    tec.idx++;
+    if(tec.idx>=tec.steps.length){
+      guardarTechniqueLog('visualizacion', {pasos:tec.steps.length}, 'Guion completo').then(()=>{ tec=null; activeView='tecnicas'; render(); });
+      return;
+    }
+    visualizacionTick();
+  }, step.dur*1000);
+}
+
+/* ---------- 6) Reestructuración de autohabla ---------- */
+function viewAutohabla(){
+  const logs = techniqueLogs.filter(l=>l.technique_key==='autohabla');
+  const historyRows = logs.slice(0,10).map(l=>`
+    <div class="tec-history-item">
+      <strong>Situación:</strong> ${esc(l.data.situacion)}<br>
+      <strong>Pensamiento negativo:</strong> ${esc(l.data.negativo)}<br>
+      <strong>Reformulación:</strong> ${esc(l.data.reformulado)}
+    </div>`).join('');
+  return `<div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Cognitivo</div><h1>Reestructuración de autohabla</h1></div>
+      <button class="btn-ghost" onclick="window.volverATecnicas()">← Volver</button></div>
+    <p class="hint">Ejemplos de reformulación: "no puedo fallar" → "voy a enfocarme en mi próxima jugada"; "siempre me pongo nervioso" → "esto es activación normal, la puedo usar a mi favor".</p>
+    <label>Situación</label><input type="text" id="at_situacion" placeholder="Ej. antes de un tiro libre decisivo">
+    <label>Pensamiento negativo habitual</label><textarea id="at_negativo"></textarea>
+    <label>Reformulación instruccional/motivacional</label><textarea id="at_reformulado"></textarea>
+    <div class="btn-row"><button class="btn-primary" onclick="window.guardarAutohabla()">Guardar registro</button></div>
+    <div id="autohablaMsg"></div>
+    ${historyRows? `<div class="tec-history"><strong style="font-size:12.5px;color:var(--gray);">Historial</strong>${historyRows}</div>`:''}
+  </div>`;
+}
+window.guardarAutohabla = async function(){
+  const situacion = document.getElementById('at_situacion').value.trim();
+  const negativo = document.getElementById('at_negativo').value.trim();
+  const reformulado = document.getElementById('at_reformulado').value.trim();
+  if(!situacion||!negativo||!reformulado){ document.getElementById('autohablaMsg').innerHTML = `<div class="error-box">Completá los 3 campos.</div>`; return; }
+  const ok = await guardarTechniqueLog('autohabla', {situacion,negativo,reformulado}, null);
+  if(ok){ render(); }
+};
+
+/* ---------- 7) Definición de metas ---------- */
+function viewMetas(){
+  const logs = techniqueLogs.filter(l=>l.technique_key==='metas');
+  const rows = logs.map(l=>`
+    <div class="tec-history-item">
+      <strong>${l.data.tipo==='proceso'?'Meta de proceso':'Meta de resultado'}:</strong> ${esc(l.data.meta)} —
+      indicador: ${esc(l.data.indicador)} · fecha objetivo: ${esc(l.data.fecha||'—')}
+    </div>`).join('');
+  return `<div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Motivación</div><h1>Definición de metas</h1></div>
+      <button class="btn-ghost" onclick="window.volverATecnicas()">← Volver</button></div>
+    <p class="hint">Las metas de proceso (lo que el deportista controla directamente) suelen ser más protectoras que las metas de resultado (que dependen también de terceros).</p>
+    <div class="grid2">
+      <div><label>Tipo de meta</label><select id="mt_tipo"><option value="proceso">De proceso</option><option value="resultado">De resultado</option></select></div>
+      <div><label>Fecha objetivo</label><input type="date" id="mt_fecha"></div>
+    </div>
+    <label>Meta</label><input type="text" id="mt_meta" placeholder="Ej. mantener el 80% de efectividad en tiros libres en entrenamiento">
+    <label>Indicador de éxito (cómo se va a medir)</label><input type="text" id="mt_indicador">
+    <div class="btn-row"><button class="btn-primary" onclick="window.guardarMeta()">Guardar meta</button></div>
+    <div id="metasMsg"></div>
+    ${rows? `<div class="tec-history"><strong style="font-size:12.5px;color:var(--gray);">Metas registradas</strong>${rows}</div>`:''}
+  </div>`;
+}
+window.guardarMeta = async function(){
+  const tipo = document.getElementById('mt_tipo').value;
+  const fecha = document.getElementById('mt_fecha').value;
+  const meta = document.getElementById('mt_meta').value.trim();
+  const indicador = document.getElementById('mt_indicador').value.trim();
+  if(!meta||!indicador){ document.getElementById('metasMsg').innerHTML = `<div class="error-box">Completá la meta y el indicador.</div>`; return; }
+  const ok = await guardarTechniqueLog('metas', {tipo,fecha,meta,indicador}, null);
+  if(ok){ render(); }
+};
+
+/* ---------- 8) Constructor de rutina pre-competitiva ---------- */
+function viewRutina(){
+  if(!tec || tec.key!=='rutina_builder'){ tec = { key:'rutina_builder', pasos:[] }; }
+  const logs = techniqueLogs.filter(l=>l.technique_key==='rutina_precompetitiva');
+  const ultima = logs[0];
+  const pasosHtml = tec.pasos.map((p,i)=>`<div class="tec-history-item">${i+1}. ${esc(p.texto)} (${p.segundos}s) <button class="btn-danger" style="padding:2px 8px;font-size:11px;" onclick="window.quitarPasoRutina(${i})">Quitar</button></div>`).join('');
+  return `<div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Rutinas</div><h1>Constructor de rutina pre-competitiva</h1></div>
+      <button class="btn-ghost" onclick="window.volverATecnicas()">← Volver</button></div>
+    <p class="hint">Armá una secuencia de pasos concretos que el deportista repite siempre antes de competir (respiración, frase clave, gesto técnico de calentamiento, etc.).</p>
+    <div class="grid2">
+      <div style="grid-column:1/3;"><label>Paso</label><input type="text" id="rt_paso" placeholder="Ej. Respirar 3 veces profundo mirando el aro"></div>
+      <div><label>Duración (segundos)</label><input type="number" id="rt_segundos" value="10"></div>
+    </div>
+    <div class="btn-row"><button class="btn-ghost" onclick="window.agregarPasoRutina()">+ Agregar paso</button></div>
+    ${pasosHtml}
+    <div class="btn-row"><button class="btn-primary" onclick="window.guardarRutina()">Guardar rutina</button></div>
+    <div id="rutinaMsg"></div>
+    ${ultima? `<div class="tec-history"><strong style="font-size:12.5px;color:var(--gray);">Última rutina guardada (${new Date(ultima.created_at).toLocaleDateString('es-BO')})</strong>${(ultima.data.pasos||[]).map((p,i)=>`<div class="tec-history-item">${i+1}. ${esc(p.texto)} (${p.segundos}s)</div>`).join('')}</div>`:''}
+  </div>`;
+}
+window.agregarPasoRutina = function(){
+  const texto = document.getElementById('rt_paso').value.trim();
+  const segundos = Number(document.getElementById('rt_segundos').value)||10;
+  if(!texto) return;
+  tec.pasos.push({texto, segundos});
+  render();
+};
+window.quitarPasoRutina = function(i){ tec.pasos.splice(i,1); render(); };
+window.guardarRutina = async function(){
+  if(!tec.pasos.length){ document.getElementById('rutinaMsg').innerHTML = `<div class="error-box">Agregá al menos un paso.</div>`; return; }
+  const ok = await guardarTechniqueLog('rutina_precompetitiva', {pasos:tec.pasos}, `${tec.pasos.length} pasos`);
+  if(ok){ tec = {key:'rutina_builder', pasos:[]}; render(); }
+};
+
+/* ============================================================
+   INFORME INTEGRADO
+   ============================================================ */
+window.abrirInforme = function(){ activeView='informe'; render(); };
+function viewInforme(){
+  return `<div class="panel no-print">
+    <div class="panel-head"><div><div class="eyebrow">${esc(currentAthlete.nombre)}</div><h1>Informe integrado</h1></div>
+      <button class="btn-ghost" onclick="window.abrirEvaluacion('${currentEvaluationId}')">← Volver a la evaluación</button>
+    </div>
+    <div class="btn-row"><button class="btn-primary" onclick="window.print()">Imprimir / Guardar como PDF</button></div>
+  </div>
+  <div class="panel" id="reportPanel">${buildReporteCompleto()}</div>`;
+}
+function fmtPct(hits,total){ return total? Math.round((hits/total)*100)+'%' : '—'; }
+function buildReporteCompleto(){
+  const a = currentAthlete;
+  const e = currentEvaluation;
+  const today = new Date().toLocaleDateString('es-BO');
+
+  function seccionInstrumento(key){
+    const r = moduleResults[key];
+    const meta = getMeta(key);
+    if(!r || !r.completed) return `<p class="hint">${esc(meta.label)}: no aplicado en esta evaluación.</p>`;
+    const s = r.scores;
+    const filas = Object.keys(s).filter(k=>typeof s[k]==='number' || typeof s[k]==='string' || typeof s[k]==='boolean')
+      .map(k=>`<tr><td>${esc(k)}</td><td>${typeof s[k]==='number' && !Number.isInteger(s[k]) ? s[k].toFixed(2) : String(s[k])}</td></tr>`).join('');
+    return `<table class="report-table"><tr><th colspan="2">${esc(meta.label)}${r.dificultad? ' — '+esc(r.dificultad):''}</th></tr>${filas}</table>`;
+  }
+
+  const tecnicasHtml = techniqueLogs.length===0 ? '<p class="hint">Sin técnicas de entrenamiento mental registradas todavía.</p>' :
+    `<table class="report-table"><tr><th>Técnica</th><th>Fecha</th><th>Detalle</th></tr>
+    ${techniqueLogs.slice(0,15).map(l=>`<tr><td>${esc((TECHNIQUES[l.technique_key]||{}).label||l.technique_key)}</td><td>${new Date(l.created_at).toLocaleDateString('es-BO')}</td><td>${esc(l.notes||'—')}</td></tr>`).join('')}
+    </table>`;
+
+  return `<div class="report-page">
+    <div class="report-header">
+      <div><div class="report-title">Informe de Evaluación Psicodeportiva</div><div style="color:var(--gray);font-size:13px;">Batería Psicodeportiva Integral (BPI)</div></div>
+      <div class="report-meta">Fecha del informe: ${today}<br>Evaluador/a: ${esc(e.evaluador)||'—'}</div>
+    </div>
+
+    <div class="report-section"><h3>1. Datos del deportista</h3>
+      <table class="report-table">
+        <tr><th>Nombre</th><td>${esc(a.nombre)}</td><th>Edad</th><td>${a.edad||'—'}</td></tr>
+        <tr><th>Deporte</th><td>${esc(a.deporte||'—')}</td><th>Modalidad</th><td>${esc(a.modalidad||'—')}</td></tr>
+        <tr><th>Categoría</th><td>${esc(a.categoria||'—')}</td><th>Nivel competitivo</th><td>${esc(a.nivel_competitivo||'—')}</td></tr>
+        <tr><th>Club</th><td>${esc(a.club||'—')}</td><th>Entrenador</th><td>${esc(a.entrenador||'—')}</td></tr>
+        <tr><th>Fecha de evaluación</th><td>${esc(e.fecha_evaluacion)}</td><th>Contexto</th><td>${esc(e.contexto||'—')}</td></tr>
+      </table>
+      ${a.motivo_evaluacion? `<p><strong>Motivo de evaluación:</strong> ${esc(a.motivo_evaluacion)}</p>`:''}
+      ${a.lesiones? `<p><strong>Lesiones relevantes:</strong> ${esc(a.lesiones)}</p>`:''}
+    </div>
+
+    <div class="report-section"><h3>2. Ansiedad y Estrés</h3>
+      ${GRUPO_ANSIEDAD.map(seccionInstrumento).join('')}
+      ${GRUPO_ANSIEDAD.every(k=>moduleResults[k]&&moduleResults[k].completed) ? `<div class="interpretation-box">${buildInterpretacionAnsiedadEstres()}</div>`:''}
+    </div>
+
+    <div class="report-section"><h3>3. Motivación</h3>
+      ${GRUPO_MOTIVACION.map(seccionInstrumento).join('')}
+      ${GRUPO_MOTIVACION.every(k=>moduleResults[k]&&moduleResults[k].completed) ? `<div class="interpretation-box">${buildInterpretacionMotivacion()}</div>`:''}
+    </div>
+
+    <div class="report-section"><h3>4. Estado de ánimo, Flow y Cohesión</h3>
+      ${grupoEstado().map(seccionInstrumento).join('')}
+      ${grupoEstado().every(k=>moduleResults[k]&&moduleResults[k].completed) ? `<div class="interpretation-box">${buildInterpretacionEstado()}</div>`:''}
+    </div>
+
+    <div class="report-section"><h3>5. Evaluación cognitiva interactiva</h3>
+      ${GRUPO_COGNITIVO.map(seccionInstrumento).join('')}
+      ${GRUPO_COGNITIVO.every(k=>moduleResults[k]&&moduleResults[k].completed) ? `<div class="interpretation-box">${buildInterpretacionCognitiva()}</div>`:''}
+    </div>
+
+    <div class="report-section"><h3>6. Técnicas de entrenamiento mental — historial</h3>
+      ${tecnicasHtml}
+    </div>
+
+    <div class="report-section"><h3>7. Recomendaciones generales</h3>
+      <ul>
+        <li>Compartir los hallazgos relevantes con el cuerpo técnico, respetando la confidencialidad clínica.</li>
+        <li>Priorizar las técnicas de la biblioteca que correspondan a las áreas de mayor riesgo detectadas.</li>
+        <li>Reevaluar con la misma batería en la siguiente ventana de seguimiento para medir evolución.</li>
+      </ul>
+    </div>
+
+    <div class="signature-block">
+      <div class="sig-line">${esc(e.evaluador)||'Firma del profesional'}</div>
+      <div class="sig-line">Sello / Registro profesional</div>
+    </div>
+  </div>`;
 }
 
 /* ============================================================
