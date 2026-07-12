@@ -168,6 +168,10 @@ let cog = null; // estado transitorio de la tarea cognitiva interactiva en curso
 let tec = null; // estado transitorio de la técnica de entrenamiento mental en curso
 let techniqueLogs = []; // historial de práctica de técnicas del deportista actual
 let wellnessCheckins = []; // historial de check-ins de bienestar del deportista actual
+let filtroTexto = '';
+let filtroDeporte = '';
+let mostrarArchivados = false;
+let dashboardStats = null;
 
 function esc(s){ return (s===null||s===undefined?'':s.toString()).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
@@ -234,14 +238,69 @@ window.doLogout = async function(){
   session = null;
   render();
 };
+window.exportarRespaldo = async function(){
+  const btn = event.target; const originalText = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Generando…';
+  try{
+    const [athletesRes, evalsRes, modResRes, techRes, wellRes] = await Promise.all([
+      supabase.from('athletes').select('*'),
+      supabase.from('evaluations').select('*'),
+      supabase.from('module_results').select('*'),
+      supabase.from('technique_logs').select('*'),
+      supabase.from('wellness_checkins').select('*'),
+    ]);
+    const errores = [athletesRes,evalsRes,modResRes,techRes,wellRes].filter(r=>r.error);
+    if(errores.length){ alert('Error al generar el respaldo: '+errores[0].error.message); return; }
+    const backup = {
+      generado: new Date().toISOString(),
+      sistema: 'BPI - Batería Psicodeportiva Integral',
+      athletes: athletesRes.data,
+      evaluations: evalsRes.data,
+      module_results: modResRes.data,
+      technique_logs: techRes.data,
+      wellness_checkins: wellRes.data,
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bpi_respaldo_${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }catch(e){
+    alert('Error inesperado al generar el respaldo: '+e.message);
+  }finally{
+    btn.disabled = false; btn.textContent = originalText;
+  }
+};
 
 /* ============================================================
    CARGA DE DATOS
    ============================================================ */
 async function loadAthletes(){
-  const { data, error } = await supabase.from('athletes').select('*').eq('activo', true).order('created_at', {ascending:false});
+  const { data, error } = await supabase.from('athletes').select('*').order('created_at', {ascending:false});
   if(error){ console.error(error); athletes = []; return; }
   athletes = data || [];
+}
+async function loadDashboardStats(){
+  try{
+    const { data: evalsProg, error: e1 } = await supabase.from('evaluations').select('id').eq('estado','en_progreso');
+    const desde = new Date(Date.now()-9*86400000).toISOString().slice(0,10);
+    const { data: checkins, error: e2 } = await supabase.from('wellness_checkins').select('athlete_id, fecha, fatiga_fisica, sueno_calidad, estres').gte('fecha', desde);
+    if(e1||e2){ dashboardStats = {evaluacionesEnProgreso:0, atletasConAlerta:0}; return; }
+    const porAtleta = {};
+    (checkins||[]).forEach(c=>{ (porAtleta[c.athlete_id]=porAtleta[c.athlete_id]||[]).push(c); });
+    let atletasConAlerta = 0;
+    Object.values(porAtleta).forEach(list=>{
+      list.sort((a,b)=> a.fecha.localeCompare(b.fecha));
+      if(wellnessAlertFromList(list)) atletasConAlerta++;
+    });
+    dashboardStats = { evaluacionesEnProgreso: (evalsProg||[]).length, atletasConAlerta };
+  }catch(e){
+    dashboardStats = { evaluacionesEnProgreso:0, atletasConAlerta:0 };
+  }
 }
 async function loadEvaluations(athleteId){
   const { data, error } = await supabase.from('evaluations').select('*').eq('athlete_id', athleteId).order('fecha_evaluacion', {ascending:false});
@@ -264,10 +323,13 @@ function render(){
   else if(activeView==='reaction_choice') bodyHtml = viewReactionChoice();
   else if(activeView==='atencion_sostenida') bodyHtml = viewAtencionSostenida();
   else if(activeView==='memoria_nback') bodyHtml = viewMemoriaNback();
+  else if(activeView==='stroop_deportivo') bodyHtml = viewStroopDeportivo();
   else if(activeView==='tecnicas') bodyHtml = viewTecnicas();
   else if(activeView==='monitoreo') bodyHtml = viewMonitoreo();
+  else if(activeView==='comparacion') bodyHtml = viewComparacion();
   else if(TECHNIQUES[activeView]) bodyHtml = viewTecnicaDetalle(activeView);
   else if(activeView==='informe') bodyHtml = viewInforme();
+  else if(activeView==='perfil_equipo') bodyHtml = viewPerfilEquipo();
 
   root.innerHTML = `
   <div class="app">
@@ -277,14 +339,19 @@ function render(){
       <div class="nav-item ${activeView==='nuevo'?'active':''}" onclick="window.gotoNuevo()">+ Nuevo deportista</div>
       <div class="user-chip">
         Conectado como<br><strong>${esc(session.user.email)}</strong>
-        <button class="btn-ghost" style="margin-top:10px;" onclick="window.doLogout()">Cerrar sesión</button>
+        <button class="btn-ghost" style="margin-top:10px;" onclick="window.exportarRespaldo()">💾 Descargar respaldo</button>
+        <button class="btn-ghost" style="margin-top:8px;" onclick="window.doLogout()">Cerrar sesión</button>
       </div>
     </div>
     <div class="main" id="mainArea">${bodyHtml}</div>
   </div>`;
 }
 
-window.gotoLista = async function(){ activeView='lista'; render(); await loadAthletes(); render(); };
+window.gotoLista = async function(){
+  activeView='lista'; render();
+  await loadAthletes(); render();
+  await loadDashboardStats(); render();
+};
 window.gotoNuevo = function(){ activeView='nuevo'; render(); };
 window.abrirFicha = async function(id){
   currentAthleteId = id;
@@ -299,9 +366,26 @@ window.abrirFicha = async function(id){
    VISTA: LISTA DE DEPORTISTAS
    ============================================================ */
 function viewLista(){
-  let rows = athletes.length===0
-    ? `<p class="hint">Todavía no cargaste deportistas.</p>`
-    : athletes.map(a=>`
+  const activos = athletes.filter(a=>a.activo);
+  const deportes = [...new Set(activos.map(a=>a.deporte).filter(Boolean))].sort();
+
+  let visibles = athletes.filter(a=> mostrarArchivados ? !a.activo : a.activo);
+  if(filtroDeporte) visibles = visibles.filter(a=>a.deporte===filtroDeporte);
+  if(filtroTexto.trim()){
+    const t = filtroTexto.trim().toLowerCase();
+    visibles = visibles.filter(a=> [a.nombre,a.deporte,a.club,a.categoria].some(v=> (v||'').toLowerCase().includes(t)));
+  }
+
+  const dashHtml = dashboardStats ? `
+    <div class="score-grid" style="margin-bottom:22px;">
+      ${scoreCardHtml('Deportistas activos', activos.length, 'verde')}
+      ${scoreCardHtml('Evaluaciones en progreso', dashboardStats.evaluacionesEnProgreso, dashboardStats.evaluacionesEnProgreso>0?'amarillo':'verde')}
+      ${scoreCardHtml('Con alerta de bienestar (últimos 9 días)', dashboardStats.atletasConAlerta, dashboardStats.atletasConAlerta>0?'rojo':'verde')}
+    </div>` : `<p class="hint">Cargando estadísticas generales…</p>`;
+
+  let rows = visibles.length===0
+    ? `<p class="hint">${mostrarArchivados? 'No hay deportistas archivados.' : 'No se encontraron deportistas con ese filtro.'}</p>`
+    : visibles.map(a=>`
       <div class="athlete-row">
         <div>
           <div class="aname">${esc(a.nombre)}</div>
@@ -312,23 +396,136 @@ function viewLista(){
           </div>
         </div>
         <div class="btn-row" style="margin:0;">
-          <button class="btn-primary" onclick="window.abrirFicha('${a.id}')">Abrir ficha</button>
-          <button class="btn-danger" onclick="window.eliminarDeportista('${a.id}')">Eliminar</button>
+          ${mostrarArchivados
+            ? `<button class="btn-primary" onclick="window.restaurarDeportista('${a.id}')">Restaurar</button>`
+            : `<button class="btn-primary" onclick="window.abrirFicha('${a.id}')">Abrir ficha</button>
+               <button class="btn-danger" onclick="window.archivarDeportista('${a.id}')">Archivar</button>`}
         </div>
       </div>`).join('');
+
   return `<div class="panel">
-    <div class="panel-head"><div><div class="eyebrow">Batería Psicodeportiva Integral</div><h1>Deportistas</h1></div></div>
+    <div class="panel-head"><div><div class="eyebrow">Batería Psicodeportiva Integral</div><h1>Deportistas</h1></div>
+      <button class="btn-ghost" onclick="window.abrirPerfilEquipo()">👥 Perfil de equipo</button>
+    </div>
+    ${dashHtml}
+    <div class="grid3">
+      <div><label>Buscar</label><input type="text" id="lst_buscar" value="${esc(filtroTexto)}" placeholder="Nombre, deporte, club..." oninput="window.actualizarFiltroTexto(this.value)"></div>
+      <div><label>Filtrar por deporte</label><select id="lst_deporte" onchange="window.actualizarFiltroDeporte(this.value)">
+        <option value="">Todos</option>
+        ${deportes.map(d=>`<option value="${esc(d)}" ${filtroDeporte===d?'selected':''}>${esc(d)}</option>`).join('')}
+      </select></div>
+      <div style="display:flex;align-items:flex-end;"><button class="btn-ghost" onclick="window.toggleArchivados()">${mostrarArchivados? '← Ver activos':'Ver archivados'}</button></div>
+    </div>
     <div id="listaMsg"></div>
     ${rows}
-    <div class="btn-row"><button class="btn-primary" onclick="window.gotoNuevo()">+ Nuevo deportista</button></div>
+    ${!mostrarArchivados? `<div class="btn-row"><button class="btn-primary" onclick="window.gotoNuevo()">+ Nuevo deportista</button></div>`:''}
   </div>`;
 }
-window.eliminarDeportista = async function(id){
-  if(!confirm('¿Eliminar este deportista y todas sus evaluaciones? Esta acción no se puede deshacer.')) return;
-  const { error } = await supabase.from('athletes').delete().eq('id', id);
-  if(error){ alert('Error al eliminar: '+error.message); return; }
+window.actualizarFiltroTexto = function(v){ filtroTexto=v; render(); setTimeout(()=>{ const el=document.getElementById('lst_buscar'); if(el){ el.focus(); el.setSelectionRange(v.length,v.length); } },0); };
+window.actualizarFiltroDeporte = function(v){ filtroDeporte=v; render(); };
+window.toggleArchivados = function(){ mostrarArchivados=!mostrarArchivados; render(); };
+window.archivarDeportista = async function(id){
+  if(!confirm('¿Archivar este deportista? No se borra ningún dato, solo se saca de la lista activa. Podés restaurarlo cuando quieras desde "Ver archivados".')) return;
+  const { error } = await supabase.from('athletes').update({activo:false}).eq('id', id);
+  if(error){ alert('Error al archivar: '+error.message); return; }
   await loadAthletes(); render();
 };
+window.restaurarDeportista = async function(id){
+  const { error } = await supabase.from('athletes').update({activo:true}).eq('id', id);
+  if(error){ alert('Error al restaurar: '+error.message); return; }
+  await loadAthletes(); render();
+};
+
+/* ============================================================
+   PERFIL DE EQUIPO AGREGADO (solo deportes colectivos)
+   ============================================================ */
+let perfilEquipoSeleccionado = null;
+let perfilEquipoData = null;
+
+window.abrirPerfilEquipo = function(){
+  perfilEquipoSeleccionado = null; perfilEquipoData = null;
+  activeView = 'perfil_equipo'; render();
+};
+function equiposDisponibles(){
+  const colectivos = athletes.filter(a=>a.activo && a.modalidad==='colectivo');
+  const combos = {};
+  colectivos.forEach(a=>{
+    const key = (a.deporte||'—')+' · '+(a.club||'—');
+    combos[key] = (combos[key]||0)+1;
+  });
+  return Object.entries(combos).map(([key,count])=>({key, count}));
+}
+window.cargarEquipo = async function(key){
+  perfilEquipoSeleccionado = key;
+  perfilEquipoData = null;
+  render();
+  const [deporte, club] = key.split(' · ');
+  const equipo = athletes.filter(a=>a.activo && a.modalidad==='colectivo' && (a.deporte||'—')===deporte && (a.club||'—')===club);
+  const ids = equipo.map(a=>a.id);
+  if(ids.length===0){ perfilEquipoData = {equipo:[], porAtleta:[]}; render(); return; }
+  const { data: evals } = await supabase.from('evaluations').select('id, athlete_id, fecha_evaluacion').in('athlete_id', ids).order('fecha_evaluacion', {ascending:false});
+  const evalIds = (evals||[]).map(e=>e.id);
+  let geqResults = [];
+  if(evalIds.length){
+    const { data } = await supabase.from('module_results').select('evaluation_id, scores').eq('module_key','geq').eq('completed', true).in('evaluation_id', evalIds);
+    geqResults = data || [];
+  }
+  const geqByEval = {};
+  geqResults.forEach(r=> geqByEval[r.evaluation_id]=r.scores);
+  const porAtleta = [];
+  equipo.forEach(a=>{
+    const evalsDelAtleta = (evals||[]).filter(e=>e.athlete_id===a.id); // ya viene ordenado desc por fecha
+    const conGeq = evalsDelAtleta.find(e=> geqByEval[e.id]);
+    porAtleta.push({
+      nombre: a.nombre,
+      fecha: conGeq? conGeq.fecha_evaluacion : null,
+      scores: conGeq? geqByEval[conGeq.id] : null,
+    });
+  });
+  perfilEquipoData = { equipo, porAtleta };
+  render();
+};
+function viewPerfilEquipo(){
+  const equipos = equiposDisponibles();
+  let html = `<div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Deportes colectivos</div><h1>Perfil de equipo agregado</h1></div>
+      <button class="btn-ghost" onclick="window.gotoLista()">← Volver</button>
+    </div>
+    <p class="hint">Promedia la cohesión de equipo (GEQ) de la evaluación más reciente de cada deportista con datos cargados. Solo se listan combinaciones deporte + club con al menos un deportista de modalidad colectiva.</p>
+    ${equipos.length===0? `<p class="hint">No hay deportistas de modalidad colectiva cargados todavía.</p>` : `
+    <div class="btn-row" style="flex-wrap:wrap;">
+      ${equipos.map(e=>`<button class="${perfilEquipoSeleccionado===e.key?'btn-primary':'btn-ghost'}" onclick="window.cargarEquipo('${esc(e.key)}')">${esc(e.key)} (${e.count})</button>`).join('')}
+    </div>`}
+  </div>`;
+
+  if(perfilEquipoSeleccionado){
+    if(!perfilEquipoData){
+      html += `<div class="panel"><p class="hint">Cargando datos del equipo…</p></div>`;
+    } else {
+      const conDatos = perfilEquipoData.porAtleta.filter(p=>p.scores);
+      const sinDatos = perfilEquipoData.porAtleta.filter(p=>!p.scores);
+      let resumen = '';
+      if(conDatos.length>0){
+        const avg = (field)=> conDatos.reduce((a,p)=>a+p.scores[field],0)/conDatos.length;
+        resumen = `<div class="score-grid">
+          ${scoreCardHtml('Atracción individual · Tarea', avg('atg_tarea').toFixed(2)+' / 9', levelGEQ(avg('atg_tarea')))}
+          ${scoreCardHtml('Atracción individual · Social', avg('atg_social').toFixed(2)+' / 9', levelGEQ(avg('atg_social')))}
+          ${scoreCardHtml('Integración grupal · Tarea', avg('gi_tarea').toFixed(2)+' / 9', levelGEQ(avg('gi_tarea')))}
+          ${scoreCardHtml('Integración grupal · Social', avg('gi_social').toFixed(2)+' / 9', levelGEQ(avg('gi_social')))}
+          ${scoreCardHtml('Cohesión global del plantel', avg('global').toFixed(2)+' / 9', levelGEQ(avg('global')))}
+        </div><p class="hint">Promedio de ${conDatos.length} de ${perfilEquipoData.porAtleta.length} deportistas (los que tienen al menos un GEQ completado).</p>`;
+      } else {
+        resumen = `<p class="hint">Ningún deportista de este equipo completó todavía el GEQ en alguna evaluación.</p>`;
+      }
+      const tabla = `<table class="report-table" style="margin-top:14px;">
+        <tr><th>Deportista</th><th>Última evaluación con GEQ</th><th>Cohesión global</th></tr>
+        ${perfilEquipoData.porAtleta.map(p=>`<tr><td>${esc(p.nombre)}</td><td>${p.fecha? esc(p.fecha):'—'}</td><td>${p.scores? p.scores.global.toFixed(2):'—'}</td></tr>`).join('')}
+      </table>`;
+      html += `<div class="panel"><div class="panel-head"><div><div class="eyebrow">${esc(perfilEquipoSeleccionado)}</div><h1>Cohesión del plantel</h1></div></div>${resumen}${tabla}</div>`;
+    }
+  }
+  return html;
+}
 
 /* ============================================================
    VISTA: NUEVO DEPORTISTA
@@ -438,6 +635,7 @@ function viewFicha(){
     <div class="btn-row">
       <button class="btn-primary" onclick="window.abrirTecnicas()">🧠 Plan de entrenamiento mental</button>
       <button class="btn-primary" onclick="window.abrirMonitoreo()">📋 Monitoreo diario</button>
+      <button class="btn-primary" onclick="window.abrirComparacion()">📈 Comparar evaluaciones</button>
     </div>
   </div>
 
@@ -761,13 +959,14 @@ window.abrirEvaluacion = async function(id){
 
 const GRUPO_ANSIEDAD = ['csai2','sas2','pss14','abq'];
 const GRUPO_MOTIVACION = ['sms28','teosq','autoeficacia'];
-const GRUPO_COGNITIVO = ['reaction_simple','reaction_choice','atencion_sostenida','memoria_nback'];
+const GRUPO_COGNITIVO = ['reaction_simple','reaction_choice','atencion_sostenida','memoria_nback','stroop_deportivo'];
 
 const COGNITIVE_TASKS = {
   reaction_simple: {label:"Tiempo de reacción simple", desc:"Reacción ante una única señal. Mide velocidad de respuesta motora básica."},
   reaction_choice: {label:"Tiempo de reacción de elección (Go/No-Go)", desc:"Responder solo ante la señal correcta e inhibir ante la incorrecta. Mide control inhibitorio/impulsividad."},
   atencion_sostenida: {label:"Atención sostenida (CPT deportivo)", desc:"Detectar un estímulo poco frecuente durante varios minutos. Mide vigilancia y caída atencional en el tiempo."},
   memoria_nback: {label:"Memoria de trabajo (n-back)", desc:"Indicar si el estímulo actual coincide con uno anterior en la secuencia. Mide memoria de trabajo."},
+  stroop_deportivo: {label:"Concentración (Stroop deportivo)", desc:"Identificar el COLOR en que está escrita una palabra, ignorando lo que la palabra dice. Mide concentración y resistencia a la interferencia."},
 };
 function getMeta(key){ return INSTRUMENTS[key] || COGNITIVE_TASKS[key]; }
 
@@ -872,13 +1071,15 @@ function viewInstrumento(key){
 }
 window.abrirEvaluacionDesdeInstrumento = function(){ activeView='evaluacion'; render(); };
 
-function badgeHtml(level){
-  const map = {verde:['Bajo','verde'], amarillo:['Moderado','amarillo'], rojo:['Alto','rojo']};
+function badgeHtml(level, tipo){
+  const mapRiesgo = {verde:['Bajo','verde'], amarillo:['Moderado','amarillo'], rojo:['Alto','rojo']};
+  const mapCalidad = {verde:['Bueno','verde'], amarillo:['Regular','amarillo'], rojo:['Bajo','rojo']};
+  const map = tipo==='calidad'? mapCalidad : mapRiesgo;
   const [lab,cls] = map[level];
   return `<span class="badge ${cls}"><span class="ring"></span>${lab}</span>`;
 }
-function scoreCardHtml(label, value, level){
-  return `<div class="score-card"><div class="sc-label">${label}</div><div class="sc-value">${value}</div>${badgeHtml(level)}</div>`;
+function scoreCardHtml(label, value, level, tipo){
+  return `<div class="score-card"><div class="sc-label">${label}</div><div class="sc-value">${value}</div>${badgeHtml(level, tipo)}</div>`;
 }
 
 function scoreCSAI2(answers){
@@ -1253,6 +1454,7 @@ window.iniciarTareaCognitiva = function(key, dificultad){
   if(key==='reaction_choice') return window.iniciarReactionChoice(dificultad);
   if(key==='atencion_sostenida') return window.iniciarAtencionSostenida(dificultad);
   if(key==='memoria_nback') return window.iniciarMemoriaNback(dificultad);
+  if(key==='stroop_deportivo') return window.iniciarStroopDeportivo(dificultad);
   if(key==='grilla_concentracion') return window.iniciarTecnicaGrilla(dificultad);
   if(key==='respiracion') return window.iniciarTecnicaRespiracion(dificultad);
   if(key==='toma_decisiones') return window.iniciarTecnicaDecisiones(dificultad);
@@ -1445,7 +1647,7 @@ function finishReactionChoice(){
 function renderReactionChoiceResults(s){
   const commissionRate = s.noGoTotal? s.commissions/s.noGoTotal : 0;
   return `<div class="score-grid">
-    ${scoreCardHtml('Aciertos (Go)', s.hits+' / '+s.goTotal, s.goTotal && (s.hits/s.goTotal)>=0.9?'verde':'amarillo')}
+    ${scoreCardHtml('Aciertos (Go)', s.hits+' / '+s.goTotal, s.goTotal && (s.hits/s.goTotal)>=0.9?'verde':'amarillo', 'calidad')}
     ${scoreCardHtml('Tiempo medio (Go)', (s.meanRt||'—')+' ms', 'verde')}
     ${scoreCardHtml('Errores de comisión (No-Go)', s.commissions+' / '+s.noGoTotal, commissionRate<=0.15?'verde':(commissionRate<=0.3?'amarillo':'rojo'))}
     ${scoreCardHtml('Inhibiciones correctas', s.correctInhibitions+' / '+s.noGoTotal, 'verde')}
@@ -1535,7 +1737,7 @@ function finishCPT(){
 function renderCPTResults(s){
   const decline = (s.firstHalfHitRate!==null && s.secondHalfHitRate!==null) ? (s.firstHalfHitRate - s.secondHalfHitRate) : null;
   return `<div class="score-grid">
-    ${scoreCardHtml('Aciertos', s.hits+' / '+s.targetsTotal, s.targetsTotal && (s.hits/s.targetsTotal)>=0.85?'verde':'amarillo')}
+    ${scoreCardHtml('Aciertos', s.hits+' / '+s.targetsTotal, s.targetsTotal && (s.hits/s.targetsTotal)>=0.85?'verde':'amarillo', 'calidad')}
     ${scoreCardHtml('Omisiones', s.omissions, s.omissions<=2?'verde':(s.omissions<=5?'amarillo':'rojo'))}
     ${scoreCardHtml('Falsas alarmas', s.falseAlarms, s.falseAlarms<=2?'verde':(s.falseAlarms<=5?'amarillo':'rojo'))}
     ${scoreCardHtml('Tiempo medio', (s.meanRt||'—')+' ms', 'verde')}
@@ -1622,11 +1824,110 @@ function finishNback(){
 function renderNbackResults(s){
   return `<div class="score-grid">
     ${scoreCardHtml('Nivel (n-back)', s.n, 'verde')}
-    ${scoreCardHtml('Aciertos', s.hits+' / '+s.matchesTotal, s.precision>=80?'verde':(s.precision>=60?'amarillo':'rojo'))}
-    ${scoreCardHtml('Precisión', s.precision+'%', s.precision>=80?'verde':(s.precision>=60?'amarillo':'rojo'))}
+    ${scoreCardHtml('Aciertos', s.hits+' / '+s.matchesTotal, s.precision>=80?'verde':(s.precision>=60?'amarillo':'rojo'), 'calidad')}
+    ${scoreCardHtml('Precisión', s.precision+'%', s.precision>=80?'verde':(s.precision>=60?'amarillo':'rojo'), 'calidad')}
     ${scoreCardHtml('Falsas alarmas', s.falseAlarms, s.falseAlarms<=2?'verde':(s.falseAlarms<=5?'amarillo':'rojo'))}
     ${scoreCardHtml('Rechazos correctos', s.correctRejections, 'verde')}
   </div><p class="hint">Precisión ≥80% adecuada · 60-79% moderada · &lt;60% baja para el nivel aplicado.</p>`;
+}
+
+/* ---------- 5) Concentración (Stroop deportivo) ---------- */
+const STROOP_COLORS = [{name:'Rojo', hex:'#C0524A'}, {name:'Verde', hex:'#3E8E5A'}, {name:'Azul', hex:'#2C5F7C'}, {name:'Amarillo', hex:'#B8862E'}];
+const STROOP_PARAMS = {
+  principiante: {trials:12, incongruentRatio:0.3, responseWindow:2500},
+  intermedio: {trials:16, incongruentRatio:0.5, responseWindow:2000},
+  avanzado: {trials:20, incongruentRatio:0.75, responseWindow:1500},
+};
+function viewStroopDeportivo(){
+  if(cog && cog.task==='stroop_deportivo'){
+    return `<div class="panel">
+      <div class="panel-head"><div><div class="eyebrow">Stroop deportivo · ${cog.dificultad}</div><h1>Ensayo ${Math.min(cog.currentTrial+1,cog.params.trials)} de ${cog.params.trials}</h1></div></div>
+      <div id="stroopStage"></div>
+    </div>`;
+  }
+  const result = moduleResults.stroop_deportivo;
+  return `<div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Evaluación cognitiva</div><h1>Concentración (Stroop deportivo)</h1></div>
+      <button class="btn-ghost" onclick="window.volverDeTareaCognitiva()">← Volver</button></div>
+    <p class="hint">Va a aparecer el nombre de un color, escrito en un color que puede o no coincidir. Tocá el botón del color en que está ESCRITA la palabra, ignorando lo que dice.</p>
+    ${result && result.completed ? renderStroopResults(result.scores) : ''}
+    ${renderDifficultySelector('stroop_deportivo')}
+  </div>`;
+}
+window.iniciarStroopDeportivo = function(dificultad){
+  const p = STROOP_PARAMS[dificultad];
+  cog = { task:'stroop_deportivo', dificultad, params:p, currentTrial:0, results:[] };
+  activeView='stroop_deportivo'; render();
+  setTimeout(nextStroopTrial, 400);
+};
+function nextStroopTrial(){
+  if(!cog || cog.task!=='stroop_deportivo') return;
+  if(cog.currentTrial>=cog.params.trials) return finishStroop();
+  const wordColor = pick(STROOP_COLORS);
+  let displayColor = wordColor;
+  if(Math.random()<cog.params.incongruentRatio){
+    const otras = STROOP_COLORS.filter(c=>c.name!==wordColor.name);
+    displayColor = pick(otras);
+  }
+  cog.wordColor = wordColor;
+  cog.displayColor = displayColor;
+  cog.congruente = wordColor.name===displayColor.name;
+  cog.stimulusTime = Date.now();
+  cog.responded = false;
+  renderStroopStage();
+  cog.timeoutId = setTimeout(()=>{
+    if(!cog || cog.task!=='stroop_deportivo') return;
+    if(!cog.responded){
+      cog.results.push({congruente:cog.congruente, correct:false, rt:null});
+      cog.currentTrial++;
+      nextStroopTrial();
+    }
+  }, cog.params.responseWindow);
+}
+function renderStroopStage(){
+  const el = document.getElementById('stroopStage');
+  if(!el) return;
+  const botones = STROOP_COLORS.map(c=>`<button class="btn-ghost" style="border-color:${c.hex};color:${c.hex};font-weight:700;" onclick="window.stroopClick('${c.name}')">${c.name}</button>`).join(' ');
+  el.innerHTML = `<div style="height:160px;display:flex;align-items:center;justify-content:center;">
+      <div style="font-size:44px;font-weight:800;color:${cog.displayColor.hex};">${cog.wordColor.name}</div>
+    </div>
+    <div class="btn-row" style="justify-content:center;">${botones}</div>`;
+}
+window.stroopClick = function(colorName){
+  if(!cog || cog.task!=='stroop_deportivo' || cog.responded) return;
+  cog.responded = true;
+  clearTimeout(cog.timeoutId);
+  const rt = Date.now()-cog.stimulusTime;
+  const correct = colorName===cog.displayColor.name;
+  cog.results.push({congruente:cog.congruente, correct, rt});
+  cog.currentTrial++;
+  nextStroopTrial();
+};
+function finishStroop(){
+  const results = cog.results;
+  const dificultad = cog.dificultad;
+  const congruentes = results.filter(r=>r.congruente);
+  const incongruentes = results.filter(r=>!r.congruente);
+  const accCongruente = congruentes.length? Math.round((congruentes.filter(r=>r.correct).length/congruentes.length)*100):null;
+  const accIncongruente = incongruentes.length? Math.round((incongruentes.filter(r=>r.correct).length/incongruentes.length)*100):null;
+  const rtCongruente = congruentes.filter(r=>r.correct && r.rt!==null);
+  const rtIncongruente = incongruentes.filter(r=>r.correct && r.rt!==null);
+  const meanRtCongruente = rtCongruente.length? Math.round(rtCongruente.reduce((a,b)=>a+b.rt,0)/rtCongruente.length):null;
+  const meanRtIncongruente = rtIncongruente.length? Math.round(rtIncongruente.reduce((a,b)=>a+b.rt,0)/rtIncongruente.length):null;
+  const interferencia = (meanRtCongruente!==null && meanRtIncongruente!==null) ? (meanRtIncongruente-meanRtCongruente) : null;
+  const accuracyGlobal = Math.round((results.filter(r=>r.correct).length/results.length)*100);
+  const scores = { accuracyGlobal, accCongruente, accIncongruente, meanRtCongruente, meanRtIncongruente, interferencia, total: results.length };
+  guardarResultadoCognitivo('stroop_deportivo', dificultad, results, scores);
+}
+function renderStroopResults(s){
+  const level = s.accuracyGlobal>=85?'verde':(s.accuracyGlobal>=65?'amarillo':'rojo');
+  const interfLevel = s.interferencia===null? 'verde' : s.interferencia<=150?'verde':(s.interferencia<=350?'amarillo':'rojo');
+  return `<div class="score-grid">
+    ${scoreCardHtml('Precisión global', s.accuracyGlobal+'%', level, 'calidad')}
+    ${scoreCardHtml('Precisión (congruente)', (s.accCongruente??'—')+'%', 'verde', 'calidad')}
+    ${scoreCardHtml('Precisión (incongruente)', (s.accIncongruente??'—')+'%', s.accIncongruente!==null && s.accIncongruente<70?'rojo':'amarillo', 'calidad')}
+    ${scoreCardHtml('Efecto de interferencia', (s.interferencia!==null? s.interferencia+' ms' : '—'), interfLevel)}
+  </div><p class="hint">El "efecto de interferencia" es cuánto más lento responde ante palabras incongruentes vs. congruentes. &lt;150ms bajo · 150-350ms moderado · &gt;350ms alto (mayor interferencia = más dificultad para concentrarse ignorando distractores).</p>`;
 }
 
 /* ---------- Interpretación cruzada de la Tanda 4 ---------- */
@@ -1635,11 +1936,13 @@ function buildInterpretacionCognitiva(){
   const rc = moduleResults.reaction_choice.scores;
   const cpt = moduleResults.atencion_sostenida.scores;
   const nb = moduleResults.memoria_nback.scores;
+  const stroop = moduleResults.stroop_deportivo ? moduleResults.stroop_deportivo.scores : null;
   const lines = [];
 
   if(rs.sd>100) lines.push('El tiempo de reacción simple muestra alta variabilidad (SD elevada), lo que sugiere inconsistencia en la respuesta más que lentitud generalizada.');
   const commissionRate = rc.noGoTotal? rc.commissions/rc.noGoTotal : 0;
   if(commissionRate>0.3) lines.push('La tarea Go/No-Go muestra una tasa alta de errores de comisión (responder cuando no debía), un indicador conductual de impulsividad.');
+  if(stroop && stroop.interferencia!==null && stroop.interferencia>350) lines.push('El Stroop deportivo muestra un efecto de interferencia alto, lo que indica dificultad para concentrarse ignorando distractores relevantes.');
   if(cpt.omissions>5 || (cpt.firstHalfHitRate!==null && cpt.secondHalfHitRate!==null && (cpt.firstHalfHitRate-cpt.secondHalfHitRate)>0.25)){
     lines.push('La atención sostenida muestra una caída relevante en la segunda mitad de la tarea, compatible con fatiga atencional progresiva.');
   }
@@ -1762,6 +2065,7 @@ const WELLNESS_METRICS = [
 ];
 
 window.abrirMonitoreo = async function(){
+  wcFechaSeleccionada = null;
   activeView = 'monitoreo'; render();
   await loadWellnessCheckins(currentAthleteId);
   render();
@@ -1788,9 +2092,9 @@ function sparklineSVG(values, opts){
   return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="${lastX}" cy="${lastY}" r="3.5" fill="${color}"/></svg>`;
 }
 
-function wellnessAlert(){
-  if(wellnessCheckins.length<3) return null;
-  const ultimos3 = wellnessCheckins.slice(-3);
+function wellnessAlertFromList(checkins){
+  if(!checkins || checkins.length<3) return null;
+  const ultimos3 = checkins.slice(-3);
   const avgFatiga = ultimos3.reduce((a,b)=>a+(b.fatiga_fisica||0),0)/3;
   const avgSueno = ultimos3.reduce((a,b)=>a+(b.sueno_calidad||0),0)/3;
   const avgEstres = ultimos3.reduce((a,b)=>a+(b.estres||0),0)/3;
@@ -1802,36 +2106,41 @@ function wellnessAlert(){
   }
   return null;
 }
+function wellnessAlert(){ return wellnessAlertFromList(wellnessCheckins); }
 
+let wcFechaSeleccionada = null;
 function viewMonitoreo(){
   const today = new Date().toISOString().slice(0,10);
-  const yaHoy = wellnessCheckins.find(c=>c.fecha===today);
+  if(!wcFechaSeleccionada) wcFechaSeleccionada = today;
+  const registroDelDia = wellnessCheckins.find(c=>c.fecha===wcFechaSeleccionada);
   const alerta = wellnessAlert();
 
   const formHtml = `
-    <div class="qsection-title">Check-in de hoy (${today})</div>
-    ${yaHoy? `<p class="hint">Ya cargaste un registro hoy — guardar de nuevo lo actualiza.</p>`:''}
+    <div class="qsection-title">Check-in</div>
+    <label>Fecha</label>
+    <input type="date" id="wc_fecha" value="${wcFechaSeleccionada}" max="${today}" onchange="window.cambiarFechaCheckin(this.value)">
+    ${registroDelDia? `<p class="hint">Ya existe un registro para esta fecha — guardar de nuevo lo actualiza.</p>` : `<p class="hint">No hay registro para esta fecha todavía.</p>`}
     <div class="grid3">
       ${WELLNESS_METRICS.filter(m=>!['alimentacion','hidratacion'].includes(m.key)).map(m=>`
-        <div><label>${m.label} (1-7)</label><input type="number" min="1" max="7" id="wc_${m.key}" value="${yaHoy? (yaHoy[m.key]??''):''}"></div>
+        <div><label>${m.label} (1-7)</label><input type="number" min="1" max="7" id="wc_${m.key}" value="${registroDelDia? (registroDelDia[m.key]??''):''}"></div>
       `).join('')}
-      <div><label>Horas de sueño</label><input type="number" step="0.5" min="0" max="14" id="wc_sueno_horas" value="${yaHoy? (yaHoy.sueno_horas??''):''}"></div>
+      <div><label>Horas de sueño</label><input type="number" step="0.5" min="0" max="14" id="wc_sueno_horas" value="${registroDelDia? (registroDelDia.sueno_horas??''):''}"></div>
     </div>
     <div class="qsection-title">Nutrición e hidratación</div>
     <div class="grid2">
-      <div><label>Alimentación — calidad/adherencia percibida (1-7)</label><input type="number" min="1" max="7" id="wc_alimentacion" value="${yaHoy? (yaHoy.alimentacion??''):''}"></div>
-      <div><label>Hidratación percibida (1-7)</label><input type="number" min="1" max="7" id="wc_hidratacion" value="${yaHoy? (yaHoy.hidratacion??''):''}"></div>
+      <div><label>Alimentación — calidad/adherencia percibida (1-7)</label><input type="number" min="1" max="7" id="wc_alimentacion" value="${registroDelDia? (registroDelDia.alimentacion??''):''}"></div>
+      <div><label>Hidratación percibida (1-7)</label><input type="number" min="1" max="7" id="wc_hidratacion" value="${registroDelDia? (registroDelDia.hidratacion??''):''}"></div>
     </div>
     <div class="qsection-title">Carga de entrenamiento (método RPE de sesión)</div>
     <p class="hint">Escala de Borg CR-10: 0 = reposo total, 10 = esfuerzo máximo absoluto.</p>
     <div class="grid2">
-      <div><label>RPE de la sesión de hoy (0-10)</label><input type="number" min="0" max="10" id="wc_rpe" value="${yaHoy? (yaHoy.rpe??''):''}"></div>
-      <div><label>Duración de la sesión (minutos)</label><input type="number" min="0" id="wc_duracion" value="${yaHoy? (yaHoy.duracion_min??''):''}"></div>
+      <div><label>RPE de la sesión (0-10)</label><input type="number" min="0" max="10" id="wc_rpe" value="${registroDelDia? (registroDelDia.rpe??''):''}"></div>
+      <div><label>Duración de la sesión (minutos)</label><input type="number" min="0" id="wc_duracion" value="${registroDelDia? (registroDelDia.duracion_min??''):''}"></div>
     </div>
     <label>Notas</label>
-    <textarea id="wc_notas">${esc(yaHoy? yaHoy.notas : '')}</textarea>
+    <textarea id="wc_notas">${esc(registroDelDia? registroDelDia.notas : '')}</textarea>
     <div id="wcMsg"></div>
-    <div class="btn-row"><button class="btn-primary" onclick="window.guardarCheckin()">Guardar check-in de hoy</button></div>
+    <div class="btn-row"><button class="btn-primary" onclick="window.guardarCheckin()">Guardar check-in (${wcFechaSeleccionada})</button></div>
   `;
 
   let historialSection = '<p class="hint">Todavía no hay check-ins registrados.</p>';
@@ -1876,11 +2185,12 @@ function viewMonitoreo(){
     ${historialSection}
   </div>`;
 }
+window.cambiarFechaCheckin = function(v){ wcFechaSeleccionada = v; render(); };
 window.guardarCheckin = async function(){
   const g = id => { const v = document.getElementById(id).value; return v===''? null : Number(v); };
-  const today = new Date().toISOString().slice(0,10);
+  const fecha = document.getElementById('wc_fecha').value || wcFechaSeleccionada;
   const payload = {
-    athlete_id: currentAthleteId, user_id: session.user.id, fecha: today,
+    athlete_id: currentAthleteId, user_id: session.user.id, fecha,
     fatiga_fisica: g('wc_fatiga_fisica'), fatiga_mental: g('wc_fatiga_mental'),
     sueno_calidad: g('wc_sueno_calidad'), sueno_horas: g('wc_sueno_horas'),
     estres: g('wc_estres'), ansiedad: g('wc_ansiedad'), dolor_muscular: g('wc_dolor_muscular'),
@@ -1893,6 +2203,78 @@ window.guardarCheckin = async function(){
   await loadWellnessCheckins(currentAthleteId);
   render();
 };
+
+/* ============================================================
+   COMPARACIÓN EVOLUTIVA ENTRE EVALUACIONES
+   ============================================================ */
+let comparacionData = null;
+const EJES_BASE = ['Ansiedad/Estrés','Motivación','Ánimo/Flow','Cognitivo'];
+
+window.abrirComparacion = async function(){
+  comparacionData = null;
+  activeView = 'comparacion'; render();
+  await cargarComparacionEvolutiva(currentAthleteId);
+  render();
+};
+async function cargarComparacionEvolutiva(athleteId){
+  const { data: evals, error: e1 } = await supabase.from('evaluations').select('*').eq('athlete_id', athleteId).order('fecha_evaluacion', {ascending:true});
+  if(e1){ comparacionData = []; return; }
+  const evalIds = (evals||[]).map(e=>e.id);
+  let allResults = [];
+  if(evalIds.length){
+    const { data, error: e2 } = await supabase.from('module_results').select('*').in('evaluation_id', evalIds);
+    if(!e2) allResults = data || [];
+  }
+  comparacionData = (evals||[]).map(e=>{
+    const m = {};
+    allResults.filter(r=>r.evaluation_id===e.id).forEach(r=> m[r.module_key]=r);
+    return { evaluacion:e, ejes: radarEjes(m) };
+  });
+}
+function buscarEje(ejes, base){ return ejes.find(e=>e.label.indexOf(base)===0); }
+
+function viewComparacion(){
+  if(!comparacionData) return `<div class="panel"><p class="hint">Cargando comparación…</p></div>`;
+  const conDatos = comparacionData.filter(d=>d.ejes.length>0);
+  if(conDatos.length<2){
+    return `<div class="panel">
+      <div class="panel-head"><div><div class="eyebrow">${esc(currentAthlete.nombre)}</div><h1>Comparación evolutiva</h1></div>
+        <button class="btn-ghost" onclick="window.abrirFicha('${currentAthleteId}')">← Volver</button></div>
+      <p class="hint">Se necesitan al menos 2 evaluaciones con alguna tanda completa para comparar. Este deportista tiene ${conDatos.length} evaluación(es) con datos suficientes de un total de ${comparacionData.length}.</p>
+    </div>`;
+  }
+  const fechas = conDatos.map(d=>d.evaluacion.fecha_evaluacion);
+  const cards = EJES_BASE.map(base=>{
+    const vals = conDatos.map(d=>{ const eje = buscarEje(d.ejes, base); return eje? eje.valor : null; });
+    const valsLimpios = vals.filter(v=>v!==null);
+    if(valsLimpios.length<2) return `<div class="score-card"><div class="sc-label">${esc(base)}</div><p class="hint">Datos insuficientes en al menos 2 evaluaciones.</p></div>`;
+    const ultimo = valsLimpios[valsLimpios.length-1];
+    const primero = valsLimpios[0];
+    const delta = ultimo-primero;
+    const color = delta>=0? 'var(--verde)':'var(--rojo)';
+    return `<div class="score-card">
+      <div class="sc-label">${esc(base)}</div>
+      <div class="sc-value">${ultimo}</div>
+      ${sparklineSVG(valsLimpios, {min:0,max:100,color})}
+      <div class="hint" style="margin-top:6px;">${delta>=0?'+':''}${delta} pts desde la primera evaluación con datos</div>
+    </div>`;
+  }).join('');
+  const tabla = `<table class="report-table" style="margin-top:16px;">
+    <tr><th>Fecha</th><th>Contexto</th>${EJES_BASE.map(l=>`<th>${esc(l)}</th>`).join('')}</tr>
+    ${conDatos.map(d=>`<tr><td>${esc(d.evaluacion.fecha_evaluacion)}</td><td>${esc(d.evaluacion.contexto||'—')}</td>${EJES_BASE.map(base=>{
+      const eje = buscarEje(d.ejes, base);
+      return `<td>${eje? eje.valor : '—'}</td>`;
+    }).join('')}</tr>`).join('')}
+  </table>`;
+  return `<div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">${esc(currentAthlete.nombre)}</div><h1>Comparación evolutiva</h1></div>
+      <button class="btn-ghost" onclick="window.abrirFicha('${currentAthleteId}')">← Volver</button>
+    </div>
+    <p class="hint">Evolución del perfil general (mismo cálculo usado en el radar del informe) a lo largo de ${conDatos.length} evaluaciones, desde ${fechas[0]} hasta ${fechas[fechas.length-1]}. Escala 0-100 por tanda (más alto = perfil más favorable).</p>
+    <div class="score-grid">${cards}</div>
+    ${tabla}
+  </div>`;
+}
 
 /* ---------- 1) Grilla de concentración ---------- */
 const GRILLA_PARAMS = { principiante:{max:24}, intermedio:{max:49}, avanzado:{max:99} };
@@ -2323,7 +2705,81 @@ const REGLAS_RECOMENDACION = [
   {cond:m=> m.atencion_sostenida?.completed && (m.atencion_sostenida.scores.omissions>5 || (m.atencion_sostenida.scores.firstHalfHitRate!=null && m.atencion_sostenida.scores.secondHalfHitRate!=null && (m.atencion_sostenida.scores.firstHalfHitRate-m.atencion_sostenida.scores.secondHalfHitRate)>0.25)), categoria:'Atención sostenida', tecnica:'grilla_concentracion', motivo:'Omisiones elevadas o caída atencional en la tarea de atención sostenida (CPT)', prioridad:'alta'},
   {cond:m=> m.memoria_nback?.completed && m.memoria_nback.scores.precision<60, categoria:'Memoria de trabajo', tecnica:'visualizacion', motivo:'Precisión baja en la tarea de memoria de trabajo (n-back)', prioridad:'media'},
   {cond:m=> m.reaction_simple?.completed && m.reaction_simple.scores.sd>100, categoria:'Consistencia atencional', tecnica:'centering', motivo:'Alta variabilidad en el tiempo de reacción simple', prioridad:'media'},
+  {cond:m=> m.stroop_deportivo?.completed && m.stroop_deportivo.scores.interferencia!=null && m.stroop_deportivo.scores.interferencia>350, categoria:'Concentración', tecnica:'centering', motivo:'Efecto de interferencia alto en el Stroop deportivo (dificultad para ignorar distractores)', prioridad:'alta'},
 ];
+
+/* ============================================================
+   RADAR DE PERFIL GENERAL (4 tandas, resumen visual)
+   ============================================================ */
+function radarEjes(m){
+  const ejes = [];
+  if(GRUPO_ANSIEDAD.every(k=>m[k]&&m[k].completed)){
+    const riesgos = [
+      m.csai2.scores.cognitiva>=3, m.csai2.scores.somatica>=3,
+      m.sas2.scores.somatica>=3, m.sas2.scores.preocupacion>=3,
+      m.pss14.scores.total>=27, m.abq.scores.global>=3.5,
+    ].filter(Boolean).length;
+    ejes.push({label:'Ansiedad/Estrés', valor: riesgos===0?90:(riesgos<=2?60:25)});
+  }
+  if(GRUPO_MOTIVACION.every(k=>m[k]&&m[k].completed)){
+    const riesgos = [
+      m.sms28.scores.amotivacion>=4, m.sms28.scores.indiceAutodeterminacion<0,
+      (m.teosq.scores.ego-m.teosq.scores.tarea)>0.5, m.autoeficacia.scores.global<2.5,
+    ].filter(Boolean).length;
+    ejes.push({label:'Motivación', valor: riesgos===0?90:(riesgos<=2?60:25)});
+  }
+  const estadoKeys = grupoEstado();
+  if(estadoKeys.every(k=>m[k]&&m[k].completed)){
+    const riesgos = [
+      m.mood.scores.perturbacionTotal>=4, m.fss2.scores.global<3,
+      !!(m.geq && m.geq.scores.global<4),
+    ].filter(Boolean).length;
+    ejes.push({label:'Ánimo/Flow'+(m.geq?'/Cohesión':''), valor: riesgos===0?90:(riesgos===1?60:25)});
+  }
+  if(GRUPO_COGNITIVO.every(k=>m[k]&&m[k].completed)){
+    const rc = m.reaction_choice.scores;
+    const commissionRate = rc.noGoTotal? rc.commissions/rc.noGoTotal : 0;
+    const riesgos = [
+      m.reaction_simple.scores.sd>100, commissionRate>0.3,
+      m.atencion_sostenida.scores.omissions>5, m.memoria_nback.scores.precision<60,
+      !!(m.stroop_deportivo && m.stroop_deportivo.scores.interferencia!=null && m.stroop_deportivo.scores.interferencia>350),
+    ].filter(Boolean).length;
+    ejes.push({label:'Cognitivo', valor: riesgos===0?90:(riesgos<=2?60:25)});
+  }
+  return ejes;
+}
+function radarChartSVG(ejes, size){
+  size = size||280;
+  if(ejes.length<3) return `<p class="hint">Se necesitan al menos 3 tandas completas en esta evaluación para generar el gráfico radar (hay ${ejes.length}).</p>`;
+  const cx=size/2, cy=size/2, r=size/2-42;
+  const n = ejes.length;
+  const angleStep = (2*Math.PI)/n;
+  const points = ejes.map((e,i)=>{
+    const ang = -Math.PI/2 + i*angleStep;
+    const rad = (e.valor/100)*r;
+    return [cx+rad*Math.cos(ang), cy+rad*Math.sin(ang)];
+  });
+  const polyPoints = points.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+  const rings = [0.25,0.5,0.75,1].map(f=>{
+    const pts = ejes.map((e,i)=>{
+      const ang=-Math.PI/2+i*angleStep;
+      return (cx+f*r*Math.cos(ang)).toFixed(1)+','+(cy+f*r*Math.sin(ang)).toFixed(1);
+    }).join(' ');
+    return `<polygon points="${pts}" fill="none" stroke="#DCE4EA" stroke-width="1"/>`;
+  }).join('');
+  const axes = ejes.map((e,i)=>{
+    const ang=-Math.PI/2+i*angleStep;
+    const x2=cx+r*Math.cos(ang), y2=cy+r*Math.sin(ang);
+    const lx=cx+(r+26)*Math.cos(ang), ly=cy+(r+26)*Math.sin(ang);
+    return `<line x1="${cx}" y1="${cy}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#DCE4EA" stroke-width="1"/>
+      <text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" font-size="11" fill="#66798C" text-anchor="middle">${esc(e.label)}</text>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">
+    ${rings}${axes}
+    <polygon points="${polyPoints}" fill="rgba(44,95,124,0.25)" stroke="#2C5F7C" stroke-width="2"/>
+    ${points.map(p=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3.5" fill="#2C5F7C"/>`).join('')}
+  </svg>`;
+}
 
 function buildRecomendacionesTecnicas(m){
   const activas = REGLAS_RECOMENDACION.filter(r=>{ try{ return !!r.cond(m); }catch(e){ return false; } });
@@ -2395,36 +2851,41 @@ function buildReporteCompleto(){
       ${a.lesiones? `<p><strong>Lesiones relevantes:</strong> ${esc(a.lesiones)}</p>`:''}
     </div>
 
-    <div class="report-section"><h3>2. Ansiedad y Estrés</h3>
+    <div class="report-section"><h3>2. Perfil general</h3>
+      <div style="display:flex;justify-content:center;">${radarChartSVG(radarEjes(moduleResults))}</div>
+      <p class="hint" style="text-align:center;">Resumen visual por tanda (más alejado del centro = perfil más favorable). Es una síntesis cualitativa, no un puntaje normado.</p>
+    </div>
+
+    <div class="report-section"><h3>3. Ansiedad y Estrés</h3>
       ${GRUPO_ANSIEDAD.map(seccionInstrumento).join('')}
       ${GRUPO_ANSIEDAD.every(k=>moduleResults[k]&&moduleResults[k].completed) ? `<div class="interpretation-box">${buildInterpretacionAnsiedadEstres()}</div>`:''}
     </div>
 
-    <div class="report-section"><h3>3. Motivación</h3>
+    <div class="report-section"><h3>4. Motivación</h3>
       ${GRUPO_MOTIVACION.map(seccionInstrumento).join('')}
       ${GRUPO_MOTIVACION.every(k=>moduleResults[k]&&moduleResults[k].completed) ? `<div class="interpretation-box">${buildInterpretacionMotivacion()}</div>`:''}
     </div>
 
-    <div class="report-section"><h3>4. Estado de ánimo, Flow y Cohesión</h3>
+    <div class="report-section"><h3>5. Estado de ánimo, Flow y Cohesión</h3>
       ${grupoEstado().map(seccionInstrumento).join('')}
       ${grupoEstado().every(k=>moduleResults[k]&&moduleResults[k].completed) ? `<div class="interpretation-box">${buildInterpretacionEstado()}</div>`:''}
     </div>
 
-    <div class="report-section"><h3>5. Evaluación cognitiva interactiva</h3>
+    <div class="report-section"><h3>6. Evaluación cognitiva interactiva</h3>
       ${GRUPO_COGNITIVO.map(seccionInstrumento).join('')}
       ${GRUPO_COGNITIVO.every(k=>moduleResults[k]&&moduleResults[k].completed) ? `<div class="interpretation-box">${buildInterpretacionCognitiva()}</div>`:''}
     </div>
 
-    <div class="report-section"><h3>6. Técnicas de entrenamiento mental — historial</h3>
+    <div class="report-section"><h3>7. Técnicas de entrenamiento mental — historial</h3>
       ${tecnicasHtml}
     </div>
 
-    <div class="report-section"><h3>7. Técnicas recomendadas según los resultados</h3>
+    <div class="report-section"><h3>8. Técnicas recomendadas según los resultados</h3>
       <p class="hint" style="font-style:italic;">Generado automáticamente cruzando los resultados de esta evaluación con la biblioteca de técnicas. Es una orientación, no reemplaza el juicio clínico del profesional.</p>
       ${buildRecomendacionesTecnicas(moduleResults)}
     </div>
 
-    <div class="report-section"><h3>8. Recomendaciones generales</h3>
+    <div class="report-section"><h3>9. Recomendaciones generales</h3>
       <ul>
         <li>Compartir los hallazgos relevantes con el cuerpo técnico, respetando la confidencialidad clínica.</li>
         <li>Priorizar las técnicas señaladas como "Prioritario" en la sección anterior.</li>
@@ -2442,7 +2903,7 @@ function buildReporteCompleto(){
 /* ============================================================
    INIT
    ============================================================ */
-init().then(async ()=>{ if(session){ await loadAthletes(); render(); } }).catch(err=>{
+init().then(async ()=>{ if(session){ await loadAthletes(); render(); await loadDashboardStats(); render(); } }).catch(err=>{
   root.innerHTML = `<div class="login-wrap"><div class="login-box"><div class="error-box">Error inesperado al iniciar: ${(err&&err.message)||err}</div></div></div>`;
 });
 </script>
